@@ -1,7 +1,5 @@
 /* Entry point for the Outlook add-in task pane. */
 
-/* global Office */
-
 import { AccountManager } from "./authConfig";
 import { startApp } from "./app-ui";
 import { outlookMeetingDraft } from "./outlook-draft";

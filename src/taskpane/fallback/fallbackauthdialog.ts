@@ -3,7 +3,7 @@
 
 /* This file handls MSAL auth for the fallback dialog page. */
 
-/* global Office, window, URLSearchParams */
+/* global window, URLSearchParams */
 
 import {
   AuthenticationResult,

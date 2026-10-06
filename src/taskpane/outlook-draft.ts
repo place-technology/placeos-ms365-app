@@ -5,8 +5,6 @@
  * Writing needs ReadWriteItem in manifest.xml.
  */
 
-/* global Office */
-
 import {
   spaceName,
   type BookingRequest,

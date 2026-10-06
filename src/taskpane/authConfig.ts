@@ -3,7 +3,7 @@
 
 /* This file provides MSAL auth configuration to get access token through nested app authentication. */
 
-/* global Office, console, document*/
+/* global console, document*/
 
 import {
   BrowserAuthError,
