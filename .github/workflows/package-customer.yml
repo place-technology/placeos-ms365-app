@@ -1,0 +1,104 @@
+# Builds the per-customer Outlook add-in manifest and Teams / app bar package for a PlaceOS domain,
+# plus the (domain-independent) web app. Run from Actions > "Package for customer" > Run workflow.
+# See docs/deployment.md.
+name: Package for customer
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: "Customer PlaceOS domain, e.g. acme.placeos.com (no https://, no path)"
+        required: true
+        type: string
+      path:
+        description: "Path the add-in is served from on the domain"
+        required: false
+        default: "/outlook-addin/"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    env:
+      # Inputs go through env rather than being interpolated into scripts, to avoid script injection.
+      DOMAIN: ${{ inputs.domain }}
+      ADDIN_PATH: ${{ inputs.path }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Validate inputs
+        run: |
+          if ! [[ "$DOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]]; then
+            echo "::error::domain must be a lowercase hostname like acme.placeos.com, got '$DOMAIN'"
+            exit 1
+          fi
+          if ! [[ "$ADDIN_PATH" =~ ^/([a-z0-9._-]+/)+$ ]]; then
+            echo "::error::path must start and end with / (e.g. /outlook-addin/), got '$ADDIN_PATH'"
+            exit 1
+          fi
+          echo "ADDIN_URL=https://${DOMAIN}${ADDIN_PATH}" >> "$GITHUB_ENV"
+
+      - run: npm ci
+
+      - name: Lint and type-check
+        run: |
+          npm run lint
+          npx tsc --noEmit
+
+      - name: Build (production)
+        run: npm run build
+
+      - name: Package for ${{ inputs.domain }}
+        run: |
+          mkdir -p out/manifest out/web
+          cp dist/manifest.xml "out/manifest/placeos-outlook-${DOMAIN}.xml"
+          # The web app is the same for every domain; the manifest is shipped separately.
+          cp -R dist/. out/web/
+          rm out/web/manifest.xml
+          npm run package:app
+          # Sanity check: the manifest and app package must point at this domain, not localhost.
+          if grep -q "localhost" "out/manifest/placeos-outlook-${DOMAIN}.xml"; then
+            echo "::error::manifest still contains localhost URLs"; exit 1
+          fi
+          unzip -p dist-app/*.zip manifest.json | grep -q "\"${DOMAIN}\"" \
+            || { echo "::error::app package validDomains doesn't contain ${DOMAIN}"; exit 1; }
+          {
+            echo "### PlaceOS packages for \`${DOMAIN}\`"
+            echo ""
+            echo "Add-in URL: ${ADDIN_URL}"
+            echo ""
+            echo "| Artefact | Give to | Deploy in |"
+            echo "|---|---|---|"
+            echo "| placeos-outlook-${DOMAIN} | Customer M365 admin | M365 admin center → Integrated apps → Upload custom apps (Office add-in) |"
+            echo "| placeos-app-${DOMAIN} | Customer M365 admin | M365 admin center → Integrated apps, or Teams admin center → Manage apps. Extract the downloaded artefact first; upload the inner .zip |"
+            echo "| placeos-web-app | PlaceOS | Contents served at ${ADDIN_URL} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload add-in manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: placeos-outlook-${{ inputs.domain }}
+          path: out/manifest/
+          if-no-files-found: error
+
+      - name: Upload app bar package
+        uses: actions/upload-artifact@v4
+        with:
+          name: placeos-app-${{ inputs.domain }}
+          path: dist-app/*.zip
+          if-no-files-found: error
+
+      - name: Upload web app
+        uses: actions/upload-artifact@v4
+        with:
+          name: placeos-web-app
+          path: out/web/
+          if-no-files-found: error

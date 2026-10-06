@@ -1,0 +1,36 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.19/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.19",
+  "version": "1.0.2",
+  "id": "4f9a59fb-a668-476f-8029-c192c552a1ff",
+  "developer": {
+    "name": "PlaceOS",
+    "websiteUrl": "https://placeos.com",
+    "privacyUrl": "https://placeos.com/privacy",
+    "termsOfUseUrl": "https://placeos.com/terms"
+  },
+  "name": {
+    "short": "PlaceOS",
+    "full": "PlaceOS"
+  },
+  "description": {
+    "short": "Book rooms, desks, parking and visitors with PlaceOS.",
+    "full": "Opens PlaceOS from the Teams, Outlook and Microsoft 365 app bar, signed in with your Microsoft account. See your day and book rooms, desks, parking and visitors."
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#C92365",
+  "staticTabs": [
+    {
+      "entityId": "placeos",
+      "name": "PlaceOS",
+      "contentUrl": "{{ADDIN_URL}}app.html",
+      "websiteUrl": "{{ADDIN_URL}}app.html",
+      "scopes": ["personal"]
+    }
+  ],
+  "permissions": ["identity"],
+  "validDomains": ["{{ADDIN_HOST}}"]
+}

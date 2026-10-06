@@ -1,0 +1,789 @@
+/*
+ * Themes: light (default), dark and high contrast. theme.ts sets <html data-theme> from the host
+ * (TeamsJS app theme, or the Office theme). Without it, the OS preference applies.
+ * Each colour has a literal light fallback first for IE-based Outlook webviews, which lack CSS variables.
+ */
+:root {
+  --bg: #ffffff;
+  --text: #201f1e;
+  --muted: #605e5c;
+  --border: #edebe9;
+  --ok: #107c10;
+  --error: #a4262c;
+  --accent: #0078d4;
+  --accent-text: #ffffff;
+  --secondary-bg: #ffffff;
+  --secondary-border: #8a8886;
+  --disabled-bg: #f3f2f1;
+  --disabled-text: #a19f9d;
+  --input-bg: #ffffff;
+  --input-border: #8a8886;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #1f1f1f;
+  --text: #ffffff;
+  --muted: #adadad;
+  --border: #3d3d3d;
+  --ok: #54b054;
+  --error: #f1707b;
+  --accent: #479ef5;
+  --accent-text: #000000;
+  --secondary-bg: transparent;
+  --secondary-border: #8a8886;
+  --disabled-bg: #3d3d3d;
+  --disabled-text: #8a8886;
+  --input-bg: #292929;
+  --input-border: #666666;
+  color-scheme: dark;
+}
+
+:root[data-theme="contrast"] {
+  --bg: #000000;
+  --text: #ffffff;
+  --muted: #ffffff;
+  --border: #ffffff;
+  --ok: #3ff23f;
+  --error: #ff6b6b;
+  --accent: #ffff01;
+  --accent-text: #000000;
+  --secondary-bg: #000000;
+  --secondary-border: #ffffff;
+  --disabled-bg: #000000;
+  --disabled-text: #3ff23f;
+  --input-bg: #000000;
+  --input-border: #ffffff;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: #1f1f1f;
+    --text: #ffffff;
+    --muted: #adadad;
+    --border: #3d3d3d;
+    --ok: #54b054;
+    --error: #f1707b;
+    --accent: #479ef5;
+    --accent-text: #000000;
+    --secondary-bg: transparent;
+    --secondary-border: #8a8886;
+    --disabled-bg: #3d3d3d;
+    --disabled-text: #8a8886;
+    --input-bg: #292929;
+    --input-border: #666666;
+    color-scheme: dark;
+  }
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family:
+    "Segoe UI",
+    -apple-system,
+    BlinkMacSystemFont,
+    Roboto,
+    "Helvetica Neue",
+    sans-serif;
+  font-size: 14px;
+  color: #201f1e;
+  color: var(--text);
+  background: #ffffff;
+  background: var(--bg);
+}
+
+.header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #edebe9;
+  border-bottom: 1px solid var(--border);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+button.link {
+  align-self: auto;
+  padding: 0;
+  font-weight: 400;
+  color: #0078d4;
+  color: var(--accent);
+  background: none;
+  border: none;
+  text-decoration: underline;
+}
+
+/* Today view */
+.greeting {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.today-header .detail {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #605e5c;
+  color: var(--muted);
+}
+
+#todayStatus {
+  margin: 0;
+  font-size: 12px;
+  color: #605e5c;
+  color: var(--muted);
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card {
+  padding: 12px;
+  border: 1px solid #edebe9;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.card h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #605e5c;
+  color: var(--muted);
+}
+
+.items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.items li + li {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #edebe9;
+  border-top: 1px solid var(--border);
+}
+
+.item-title {
+  font-weight: 600;
+}
+
+.item-detail {
+  font-size: 12px;
+  color: #605e5c;
+  color: var(--muted);
+}
+
+.items .empty {
+  font-size: 12px;
+  color: #605e5c;
+  color: var(--muted);
+}
+
+/* A Today item's name that opens its floor plan. */
+.item-title button.link {
+  font: inherit;
+  text-align: left;
+}
+
+.item-map {
+  margin-top: 6px;
+}
+
+.floor-map.compact {
+  height: 260px;
+  min-height: 0;
+}
+
+/* Buttons on a Today item, e.g. Check in and Cancel on a desk booking. */
+.item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.item-actions button {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.item-actions span {
+  flex-basis: 100%;
+}
+
+.item-detail.error {
+  color: #a4262c;
+  color: var(--error);
+}
+
+.item-link {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0078d4;
+  color: var(--accent);
+}
+
+.items .empty.error {
+  color: #a4262c;
+  color: var(--error);
+}
+
+.badge.ok {
+  color: #107c10;
+  color: var(--ok);
+}
+
+.badge.error {
+  color: #a4262c;
+  color: var(--error);
+}
+
+.badge {
+  color: #605e5c;
+  color: var(--muted);
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+}
+
+/* Full page: lay the cards out in a grid. */
+.full-page .cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.full-page .cards > button {
+  grid-column: 1 / -1;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 20px;
+}
+
+.field h2 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #605e5c;
+  color: var(--muted);
+}
+
+.field p {
+  margin: 0;
+  word-break: break-word;
+}
+
+.field .detail {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #605e5c;
+  color: var(--muted);
+}
+
+.claims {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.claims dt {
+  margin-top: 6px;
+  font-family: Consolas, Menlo, monospace;
+  font-weight: 600;
+}
+
+.claims dd {
+  margin: 0;
+  font-family: Consolas, Menlo, monospace;
+  word-break: break-all;
+}
+
+.claims dd.expected {
+  color: #605e5c;
+  color: var(--muted);
+}
+
+.raw-token-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.raw-token {
+  box-sizing: border-box;
+  width: 100%;
+  font-family: Consolas, Menlo, monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+#dataSection p {
+  margin-bottom: 6px;
+}
+
+.list {
+  margin: 0 0 6px;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+/* App bar personal tab: full page rather than a narrow task pane. */
+.full-page .main {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/* Specific selectors so status colours win over .detail / dd colours. */
+.ok,
+.field .detail.ok,
+.claims dt.ok {
+  color: #107c10;
+  color: var(--ok);
+}
+
+.error,
+.field .detail.error,
+.claims dt.error {
+  color: #a4262c;
+  color: var(--error);
+}
+
+select,
+textarea,
+input[type="text"],
+input[type="search"],
+input[type="date"],
+input[type="number"] {
+  font: inherit;
+  color: #201f1e;
+  color: var(--text);
+  background: #ffffff;
+  background: var(--input-bg);
+  border: 1px solid #8a8886;
+  border: 1px solid var(--input-border);
+  border-radius: 2px;
+}
+
+button {
+  align-self: flex-start;
+  padding: 6px 16px;
+  font: inherit;
+  font-weight: 600;
+  color: #ffffff;
+  color: var(--accent-text);
+  background: #0078d4;
+  background: var(--accent);
+  border: 1px solid #0078d4;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+button.secondary {
+  color: #201f1e;
+  color: var(--text);
+  background: #ffffff;
+  background: var(--secondary-bg);
+  border-color: #8a8886;
+  border-color: var(--secondary-border);
+}
+
+button:disabled,
+button.secondary:disabled {
+  color: #a19f9d;
+  color: var(--disabled-text);
+  background: #f3f2f1;
+  background: var(--disabled-bg);
+  border-color: #f3f2f1;
+  border-color: var(--disabled-bg);
+  cursor: default;
+}
+
+/* Book a room */
+.card-action {
+  margin-top: 10px;
+}
+
+.form,
+#bookRooms,
+#bookConfirm,
+#bookDone,
+#deskAssigned,
+#deskDesks,
+#deskConfirm,
+#deskDone {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px 8px;
+  font-weight: 400;
+}
+
+.form-field.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-field.inline input {
+  width: 64px;
+}
+
+.form-row {
+  display: flex;
+  gap: 8px;
+}
+
+.form-row .form-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.required,
+p.error {
+  color: #a4262c;
+  color: var(--error);
+}
+
+p.error,
+p.detail {
+  margin: 0;
+  font-size: 12px;
+}
+
+#bookStatus:empty,
+#deskStatus:empty,
+p.error:empty {
+  display: none;
+}
+
+.repeat-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 2px solid #edebe9;
+  border-left: 2px solid var(--border);
+}
+
+.weekdays,
+.features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.checkbox {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chips,
+.suggestions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  font-weight: 400;
+  border: 1px solid #8a8886;
+  border: 1px solid var(--input-border);
+  border-radius: 12px;
+}
+
+.chip .badge {
+  margin-left: 0;
+}
+
+button.chip-remove {
+  padding: 0 4px;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.suggestions {
+  border: 1px solid #8a8886;
+  border: 1px solid var(--input-border);
+}
+
+.suggestions li {
+  border-top: 1px solid #edebe9;
+  border-top: 1px solid var(--border);
+}
+
+.suggestions li:first-child {
+  border-top: none;
+}
+
+.suggestions .empty {
+  padding: 6px 8px;
+  font-weight: 400;
+  color: #605e5c;
+  color: var(--muted);
+}
+
+button.suggestion,
+button.room {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  font-weight: 400;
+  text-align: left;
+  color: #201f1e;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+button.suggestion:hover,
+button.suggestion:focus,
+button.room:hover,
+button.room:focus {
+  background: #f3f2f1;
+  background: var(--disabled-bg);
+}
+
+.items.rooms li + li {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+button.room {
+  padding: 8px;
+}
+
+.room-image {
+  display: block;
+  width: 100%;
+  max-height: 160px;
+  margin-bottom: 8px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+
+.menu-category {
+  margin: 12px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.menu-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.menu-filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.menu-filter-bar input {
+  flex: 1;
+  min-width: 0;
+}
+
+.menu-filters {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #edebe9;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+
+.menu-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+button.favourite {
+  padding: 0 4px;
+  font-size: 16px;
+  line-height: 1;
+  color: #605e5c;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+}
+
+button.favourite[aria-pressed="true"] {
+  color: #0078d4;
+  color: var(--accent);
+}
+
+input.quantity {
+  width: 56px;
+  padding: 4px 6px;
+}
+
+.menu-options {
+  margin-top: 4px;
+  padding-left: 8px;
+}
+
+#bookCateringExtras {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* Rooms map (floor-map.ts) */
+.view-toggle {
+  display: flex;
+  margin-left: auto;
+}
+
+.view-toggle button {
+  padding: 6px 12px;
+}
+
+.view-toggle button + button {
+  margin-left: -1px;
+}
+
+.map-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.floor-map {
+  position: relative;
+  height: 360px;
+  height: 55vh;
+  min-height: 260px;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #edebe9;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.floor-map-canvas {
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  -ms-touch-action: none;
+  user-select: none;
+  -ms-user-select: none;
+}
+
+.floor-map-canvas svg {
+  display: block;
+}
+
+.floor-map-canvas [role="button"]:focus {
+  outline: none;
+  stroke: #0078d4;
+  stroke: var(--accent);
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
+}
+
+.floor-map-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.floor-map-controls button {
+  min-width: 32px;
+  padding: 2px 6px;
+}
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  list-style: none;
+}
+
+.map-legend .swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  border-radius: 2px;
+}
