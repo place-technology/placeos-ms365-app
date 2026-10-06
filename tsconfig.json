@@ -7,6 +7,7 @@
     "forceConsistentCasingInFileNames": true,
     "jsx": "react",
     "noEmitOnError": true,
+    "skipLibCheck": true,
     "outDir": "lib",
     "sourceMap": true,
     "strict": true,

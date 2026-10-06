@@ -27,9 +27,9 @@ jobs:
       DOMAIN: ${{ inputs.domain }}
       ADDIN_PATH: ${{ inputs.path }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -83,21 +83,21 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload add-in manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: placeos-outlook-${{ inputs.domain }}
           path: out/manifest/
           if-no-files-found: error
 
       - name: Upload app bar package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: placeos-app-${{ inputs.domain }}
           path: dist-app/*.zip
           if-no-files-found: error
 
       - name: Upload web app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: placeos-web-app
           path: out/web/
