@@ -18,6 +18,8 @@ npm run build:dev
 npm run lint           # office-addin-lint (eslint-plugin-office-addins); lint:fix / prettier also available
 npm run validate       # validate manifest.xml
 npm run package:app    # app bar app zip for ADDIN_URL (default placeos-dev); package:app:dev for localhost
+# CI: .github/workflows/build.yml publishes dist/ (minus manifest.xml) to the build/prod branch on push to main;
+# PlaceOS serves that branch as an Interface repo (folder outlook-addin).
 # Per-customer packages in CI: .github/workflows/package-customer.yml (workflow_dispatch, input: domain)
 npx tsc --noEmit       # type-check (not part of build; CI runs it, so keep it clean)
 ```

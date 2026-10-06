@@ -1,5 +1,6 @@
-# Builds the per-customer Outlook add-in manifest and Teams / app bar package for a PlaceOS domain,
-# plus the (domain-independent) web app. Run from Actions > "Package for customer" > Run workflow.
+# Builds the per-customer Outlook add-in manifest and Teams / app bar package for a PlaceOS domain.
+# The web app itself is published to build/prod by build.yml and served by PlaceOS.
+# Run from Actions > "Package for customer" > Run workflow.
 # See docs/deployment.md.
 name: Package for customer
 
@@ -58,11 +59,8 @@ jobs:
 
       - name: Package for ${{ inputs.domain }}
         run: |
-          mkdir -p out/manifest out/web
+          mkdir -p out/manifest
           cp dist/manifest.xml "out/manifest/placeos-outlook-${DOMAIN}.xml"
-          # The web app is the same for every domain; the manifest is shipped separately.
-          cp -R dist/. out/web/
-          rm out/web/manifest.xml
           npm run package:app
           # Sanity check: the manifest and app package must point at this domain, not localhost.
           if grep -q "localhost" "out/manifest/placeos-outlook-${DOMAIN}.xml"; then
@@ -79,7 +77,6 @@ jobs:
             echo "|---|---|---|"
             echo "| placeos-outlook-${DOMAIN} | Customer M365 admin | M365 admin center → Integrated apps → Upload custom apps (Office add-in) |"
             echo "| placeos-app-${DOMAIN} | Customer M365 admin | M365 admin center → Integrated apps, or Teams admin center → Manage apps. Extract the downloaded artefact first; upload the inner .zip |"
-            echo "| placeos-web-app | PlaceOS | Contents served at ${ADDIN_URL} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload add-in manifest
@@ -94,11 +91,4 @@ jobs:
         with:
           name: placeos-app-${{ inputs.domain }}
           path: dist-app/*.zip
-          if-no-files-found: error
-
-      - name: Upload web app
-        uses: actions/upload-artifact@v7
-        with:
-          name: placeos-web-app
-          path: out/web/
           if-no-files-found: error

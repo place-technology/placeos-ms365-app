@@ -96,7 +96,7 @@ ADDIN_URL=https://<domain>/outlook-addin/ npm run package:app  # app bar zip for
 
 Production builds rewrite `https://localhost:3000/` in `manifest.xml` to `ADDIN_URL` (default `https://placeos-dev.aca.im/outlook-addin/`).
 
-For customers, use the **Package for customer** GitHub Actions workflow (`.github/workflows/package-customer.yml`). Enter the domain and it produces the manifest, the app bar zip and the web app as artefacts. Deploying is covered in [`docs/deployment.md`](docs/deployment.md).
+For customers, use the **Package for customer** GitHub Actions workflow (`.github/workflows/package-customer.yml`). Enter the domain and it produces the manifest and the app bar zip as artefacts. The web app itself is published to the `build/prod` branch on every push to `main` (`.github/workflows/build.yml`), and PlaceOS serves it from there. Deploying is covered in [`docs/deployment.md`](docs/deployment.md).
 
 ## Checks
 

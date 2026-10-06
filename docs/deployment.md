@@ -23,16 +23,18 @@ The packages contain no code. They only point at `https://<domain>/outlook-addin
 
 ## Deploy the web app
 
-```bash
-npm ci
-npm run build
-```
+PlaceOS serves the web app straight from this repository, like its other user interfaces:
 
-Upload the contents of `dist/` so they're served at `https://<domain>/outlook-addin/`. For example, `dist/taskpane.html` should be served at `https://<domain>/outlook-addin/taskpane.html`.
+1. **Every push to `main`** runs the **Build** workflow (`.github/workflows/build.yml`). It lints, type-checks, runs `npm run build` and commits the contents of `dist/` (without `manifest.xml`) to the **`build/prod`** branch. It can also be run by hand from **Actions → Build → Run workflow**.
+2. **Once per domain**, in PlaceOS Backoffice → **Repositories → Add**: type **Interface**, the URI of this repository, branch **`build/prod`**, and folder name **`outlook-addin`**. The folder name is the path, so the app is served at `https://<domain>/outlook-addin/` (for example `https://<domain>/outlook-addin/taskpane.html`). The repository is private, so enter a GitHub username and a token that can read it.
+3. **To release**, merge to `main`, wait for the Build workflow, then pull the latest commit of the repository in Backoffice (or let PlaceOS pick it up).
 
-* The same `dist/` works on every domain. The web app reads its per-domain settings at runtime from `https://<domain>/auth/authority` (`outlook_addin`), and calls `auth.cr` and the Staff API on the same domain.
-* `dist/manifest.xml` from this build is for the default domain only. Build customer manifests separately (below), and don't serve or reuse `dist/manifest.xml` for other domains.
+* The same build works on every domain. The web app reads its per-domain settings at runtime from `https://<domain>/auth/authority` (`outlook_addin`), and calls `auth.cr` and the Staff API on the same domain.
+* `build/prod` is generated: don't edit or merge it. Each build is one commit whose message names the `main` commit it came from.
+* Customer manifests are built separately (below); `build/prod` has no `manifest.xml`.
 * Production builds don't include the development tooling (raw token viewer, hardcoded test config).
+
+To host it somewhere else, run `npm ci && npm run build` and serve the contents of `dist/` (minus `manifest.xml`) at `https://<domain>/outlook-addin/`.
 
 ---
 
@@ -44,13 +46,12 @@ Office and Teams manifests need absolute URLs, so each customer domain needs its
 
 1. In the repository, go to **Actions → Package for customer → Run workflow**.
 2. Enter the customer's **domain**, e.g. `acme.placeos.com`, with no `https://` and no path. Keep the **path** at `/outlook-addin/` unless the customer hosts it elsewhere.
-3. The workflow lints, type-checks and builds, checks that the packages point at that domain (not localhost), and uploads three artefacts:
+3. The workflow lints, type-checks and builds, checks that the packages point at that domain (not localhost), and uploads two artefacts:
 
 | Artefact | Contents | Give to |
 |----------|----------|---------|
 | `placeos-outlook-<domain>` | `placeos-outlook-<domain>.xml`: Outlook add-in manifest | Customer M365 admin |
 | `placeos-app-<domain>` | `placeos-app-<domain>.zip`: Teams / app bar package | Customer M365 admin |
-| `placeos-web-app` | The web app (same for every domain, without `manifest.xml`) | Deploy to `https://<domain>/outlook-addin/` |
 
 GitHub always downloads artefacts as a zip. For `placeos-app-<domain>`, extract the download and upload the **inner** `placeos-app-<domain>.zip` to Teams or the admin center; uploading the outer zip fails. The run summary lists the add-in URL and where each artefact goes. Artefacts expire after the repository's retention period (90 days by default), so keep a copy of what you send each customer.
 
@@ -65,7 +66,7 @@ cp dist/manifest.xml placeos-outlook-<domain>.xml
 ADDIN_URL=https://<domain>/outlook-addin/ npm run package:app
 ```
 
-`ADDIN_URL` must start with `https://` and end with `/outlook-addin/`. Rebuild the web app with a plain `npm run build` before deploying it: running with `ADDIN_URL` only changes `dist/manifest.xml`, but it's clearer to keep deploy builds and package builds separate.
+`ADDIN_URL` must start with `https://` and end with `/outlook-addin/`. It only changes the manifests; the web app comes from `build/prod`.
 
 ---
 
@@ -89,8 +90,8 @@ Both packages are deployed in the **Microsoft 365 admin center → Settings → 
 
 Sign-in, PlaceOS/Staff API calls, UI, styling, theming and the **add-in icons** (served from `/outlook-addin/assets/`) are all in the web app.
 
-1. `npm run build`
-2. Deploy `dist/` to `/outlook-addin/` on each domain.
+1. Merge to `main`. The Build workflow publishes it to `build/prod`.
+2. Pull the repository's latest commit in Backoffice on each domain.
 
 **Customers don't need to do anything.** Users get the new version the next time the add-in or tab loads. Outlook caches icons, so add-in icon changes can take a while to show.
 
@@ -116,6 +117,6 @@ Entra or PlaceOS config changes, such as a new redirect URI, scope or `outlook_a
 1. `npm run lint` and `npx tsc --noEmit`
 2. `npm run validate` if `manifest.xml` changed
 3. If a package changed, bump its version (table above)
-4. `npm run build` and deploy `dist/` to `/outlook-addin/` on each domain
+4. Merge to `main`, check the **Build** workflow passed, and pull the latest `build/prod` commit in Backoffice on each domain
 5. If a package changed, run **Package for customer** for each affected domain (or build by hand with `ADDIN_URL`), send the packages to customer admins, and note which version each customer is on
 6. Smoke test on one domain: open the add-in and the app bar app. The **Today** view should load your rooms, desks, parking and visitors with no clicks. In **Diagnostics**, expect "Config from the PlaceOS domain", "Auth path: silent" and "✓ PlaceOS token accepted".

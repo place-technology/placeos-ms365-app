@@ -27,7 +27,7 @@ npm run package:app:dev
 ADDIN_URL=https://<domain>/outlook-addin/ npm run package:app
 ```
 
-Output: `dist-app/placeos-app-<host>.zip`. The web files (`app.html` etc.) come from the normal `npm run build`, deployed to `https://<domain>/outlook-addin/` alongside the add-in.
+Output: `dist-app/placeos-app-<host>.zip`. The web files (`app.html` etc.) come from the normal `npm run build`, published to `build/prod` and served at `https://<domain>/outlook-addin/` alongside the add-in.
 
 ## Install for testing
 

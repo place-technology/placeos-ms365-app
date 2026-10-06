@@ -1,0 +1,67 @@
+# Builds the web app on every push to main and publishes it to the build/prod branch, which PlaceOS serves:
+# the repository is added in Backoffice as an Interface repo on that branch, with folder name outlook-addin.
+# Same approach as PlaceOS/user-interfaces (.github/scripts/publish-subdir.sh). See docs/deployment.md.
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-prod
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: build/prod
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint and type-check
+        run: |
+          npm run lint
+          npx tsc --noEmit
+
+      - name: Build (production)
+        run: |
+          npm run build
+          # Per-customer manifests come from the "Package for customer" workflow; don't serve this one.
+          rm dist/manifest.xml
+
+      - name: Publish to ${{ env.BRANCH }}
+        run: |
+          set -euo pipefail
+          worktree="$(mktemp -d)/repo"
+          if git ls-remote --exit-code --heads origin "refs/heads/$BRANCH" >/dev/null; then
+            git fetch --depth=1 origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+            git worktree add --detach "$worktree" "refs/remotes/origin/$BRANCH"
+          else
+            git worktree add --detach "$worktree" HEAD
+            git -C "$worktree" checkout --orphan "$BRANCH"
+          fi
+          git -C "$worktree" rm --quiet -rf --ignore-unmatch .
+          cp -a dist/. "$worktree/"
+          git -C "$worktree" add -A
+          if git -C "$worktree" rev-parse --verify --quiet HEAD >/dev/null && git -C "$worktree" diff --cached --quiet; then
+            echo "No changes to publish."
+            exit 0
+          fi
+          git -C "$worktree" \
+            -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "build: [${GITHUB_SHA:0:7}] CI build"
+          git -C "$worktree" push origin "HEAD:refs/heads/$BRANCH"
+          echo "Published ${GITHUB_SHA:0:7} to \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
