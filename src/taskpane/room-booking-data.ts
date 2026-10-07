@@ -198,22 +198,41 @@ export function hiddenByRules(
   return false;
 }
 
+/** Minutes since midnight of a time in an IANA timezone, or in local time ("" or not supported). */
+export function minutesOfDay(ms: number, timezone = ""): number {
+  if (timezone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: timezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(new Date(ms));
+      const part = (type: string) => +(parts.find((p) => p.type === type)?.value || 0);
+      return (part("hour") % 24) * 60 + part("minute");
+    } catch {
+      // Older webviews only know UTC: fall back to local time.
+    }
+  }
+  return new Date(ms).getHours() * 60 + new Date(ms).getMinutes();
+}
+
 /**
- * app.events.bookable_hours (or the hours given): {start, end} in decimal hours.
- * Returns an error message, or "".
+ * app.events.bookable_hours (or the hours given): {start, end} in decimal hours, in `timezone` (local time
+ * if not given). Returns an error message, or "".
  */
 export function checkBookableHours(
   settings: AppSettings,
   start: number,
   duration: number,
   hours = settings.get<{ start?: number; end?: number } | null>("events.bookable_hours", null),
-  noun = "Rooms"
+  noun = "Rooms",
+  timezone = ""
 ): string {
   if (!hours || hours.start === undefined || hours.end === undefined) {
     return "";
   }
-  const minutes = (ms: number) => new Date(ms).getHours() * 60 + new Date(ms).getMinutes();
-  const from = minutes(start);
+  const from = minutesOfDay(start, timezone);
   const to = from + duration;
   if (from < hours.start * 60 || from >= hours.end * 60 || to > hours.end * 60) {
     const label = (h: number) =>
@@ -237,14 +256,12 @@ export const allDayAllowed = (settings: AppSettings) =>
 
 /**
  * The period an all-day booking on `day` (local midnight, ms) covers: the whole day, or the hours in
- * app.events.all_day_period, or `period` if given ({start, end} in decimal hours). Today's period starts from
- * now, rounded up to
- * 5 minutes. Duration is in minutes and is 0 when today's period is over.
+ * app.events.all_day_period, or `period` if given ({start, end} in decimal hours). Duration is in minutes.
+ * As Workplace's getAllDayTimeRange, today's period doesn't start from now; callers check if it has ended.
  */
 export function allDayPeriod(
   settings: AppSettings,
   day: number,
-  now = Date.now(),
   period = settings.get<AllDayPeriodSetting>("events.all_day_period", null)
 ): { start: number; duration: number } {
   const date = new Date(day);
@@ -262,11 +279,6 @@ export function allDayPeriod(
     const from = Math.max(0, Math.min(23, period.start));
     start = at(from);
     end = at(Math.max(from + 1, Math.min(24, period.end)));
-  }
-  const fiveMinutes = 5 * 60000;
-  const minimum = Math.ceil(now / fiveMinutes) * fiveMinutes;
-  if (minimum > start && new Date(minimum).toDateString() === date.toDateString()) {
-    start = Math.min(end, minimum);
   }
   return { start, duration: Math.round((end - start) / 60000) };
 }
@@ -440,8 +452,15 @@ export function buildEventBody(
       Intl.DateTimeFormat().resolvedOptions().timeZone
     : Intl.DateTimeFormat().resolvedOptions().timeZone;
   const organiser: Person = { name: org.user.name || org.user.email, email: org.user.email };
-  const people = [organiser, ...request.attendees].filter(
+  // As postForm: the organiser and attendees (without visit_expected; visitors are linked bookings), then
+  // the room as a resource attendee, unique by email.
+  const people: { name: string; email: string; resource?: boolean }[] = [
+    organiser,
+    ...request.attendees,
+    { name: spaceName(room), email: room.email || "", resource: true },
+  ].filter(
     (person, index, list) =>
+      person.email &&
       list.findIndex((p) => p.email.toLowerCase() === person.email.toLowerCase()) === index
   );
   const { setup, breakdown } = request.allDay
@@ -475,12 +494,10 @@ export function buildEventBody(
     private: false,
     all_day: fullDay,
     timezone,
-    // Staff API adds the room as a resource attendee itself, from system_id.
     attendees: people.map((person) => ({
       name: person.name,
       email: person.email,
-      resource: false,
-      visit_expected: person.external ? true : undefined,
+      resource: !!person.resource,
     })),
     system_id: room.id,
     location: spaceName(room),
@@ -509,12 +526,15 @@ function escapeHtml(text: string): string {
 
 export type Clash = { booking_start: number; booking_end?: number; title?: string };
 
-/** Clashing instances of a recurring series (POST /events/clashing-assets). */
+/**
+ * Clashing instances of a recurring series (POST /events/clashing-assets). As Workplace's
+ * findEventClashes, a failed check counts as no clashes.
+ */
 export async function findClashes(api: PlaceosApi, body: unknown): Promise<Clash[]> {
   const clashes = await api<Clash[]>(
     "/api/staff/v1/events/clashing-assets?include_clash_time=true&limit=10000",
     { method: "POST", body: JSON.stringify(body) }
-  );
+  ).catch(() => [] as Clash[]);
   return (clashes || []).sort((a, b) => a.booking_start - b.booking_start);
 }
 
@@ -548,6 +568,8 @@ export type LinkedBooking = {
   title?: string;
   description?: string;
   attendees?: unknown[];
+  // Overrides the event host (asset requests are made for the user, as Workplace).
+  user_email?: string;
   extension_data: Record<string, unknown>;
 };
 
@@ -579,8 +601,8 @@ export async function createLinkedBookings(
           title: event.title,
           description: event.title,
           attendees: [],
-          ...booking,
           ...common,
+          ...booking,
           extension_data: {
             parent_id: event.id,
             app_name: "PlaceOS Outlook add-in",
@@ -604,12 +626,19 @@ export async function createLinkedBookings(
   }
 }
 
-/** Visitor bookings for external attendees, so reception expects them (as Workplace does). */
-export function visitorBookings(request: BookingRequest, org: Organisation): LinkedBooking[] {
+/** Visitor bookings for external attendees other than the host, so reception expects them (as Workplace). */
+export function visitorBookings(
+  request: BookingRequest,
+  org: Organisation,
+  host: string
+): LinkedBooking[] {
   const domain = org.user.email.split("@")[1] || "";
   return request.attendees
     .filter(
-      (person) => person.external && (!domain || !person.email.toLowerCase().includes(domain))
+      (person) =>
+        person.external &&
+        person.email.toLowerCase() !== host.toLowerCase() &&
+        (!domain || !person.email.toLowerCase().includes(domain))
     )
     .map((person) => ({
       booking_type: "visitor",

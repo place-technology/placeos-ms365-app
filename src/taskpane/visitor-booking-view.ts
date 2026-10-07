@@ -73,12 +73,30 @@ function setText(element: HTMLElement, text: string, className?: string) {
   }
 }
 
+/** The "error" or "message" text of a JSON error body, as Workplace's errorMessage reads it, or "". */
+function serverMessage(body: string): string {
+  try {
+    const json: unknown = JSON.parse(body);
+    if (json && typeof json === "object") {
+      const { error, message } = json as { error?: unknown; message?: unknown };
+      return typeof error === "string" ? error : typeof message === "string" ? message : "";
+    }
+  } catch {
+    // Not JSON (e.g. a proxy error page).
+  }
+  return "";
+}
+
 function describeError(error: unknown): string {
   if (error instanceof PlaceosRequestError) {
-    if (error.status === 401 || error.status === 403) {
-      return "PlaceOS didn't allow this invite.";
-    }
-    return `PlaceOS couldn't complete this (${error.status}). Try again.`;
+    const denied = error.status === 401 || error.status === 403;
+    const text = denied
+      ? "PlaceOS didn't allow this invite."
+      : `PlaceOS couldn't complete this (${error.status}).`;
+    // Workplace shows the Staff API's message, so add it when there is one.
+    return [text, serverMessage(error.body) || (denied ? "" : "Try again.")]
+      .filter(Boolean)
+      .join(" ");
   }
   return error instanceof Error ? error.message : `${error}`;
 }
@@ -242,7 +260,8 @@ function resetForm() {
   for (const id of ["visitorName", "visitorEmail", "visitorCompany", "visitorPass"]) {
     input(id).value = "";
   }
-  input("visitorReason").value = "Visit";
+  // With app.visitors.reason_required the user must type a reason, so there's no default.
+  input("visitorReason").value = reasonRequired() ? "" : "Visit";
   input("visitorInternational").checked = false;
   fillTimes();
   setText(el("visitorFormError"), "");
@@ -285,14 +304,19 @@ function fillTimes() {
 }
 
 const allDayChecked = () => visitorAllDayAllowed(settings) && input("visitorAllDay").checked;
+const reasonRequired = () => settings.get<boolean>("visitors.reason_required") === true;
 
-/** The chosen start (ms) and duration (minutes): the all-day period, or the start and end pickers. */
+/**
+ * The chosen start (ms) and duration (minutes): the all-day period, or the start and end pickers.
+ * The all-day period is the whole day (or all_day_period hours), also today, as Workplace's
+ * getAllDayTimeRange.
+ */
 function formTimes(): { start: number; duration: number } {
   if (allDayChecked()) {
     const day = parseDate(input("visitorDate").value);
     return isNaN(day)
       ? { start: 0, duration: 0 }
-      : allDayPeriod(settings, day, Date.now(), visitorSetting(settings, "all_day_period", null));
+      : allDayPeriod(settings, day, visitorSetting(settings, "all_day_period", null));
   }
   return { start: +select("visitorStart").value, duration: +select("visitorEnd").value };
 }
@@ -305,7 +329,7 @@ function updateAllDay() {
     el("visitorAllDayTimes"),
     !allDay || !start
       ? ""
-      : duration <= 0
+      : start + duration * minute <= Date.now()
         ? "The all-day period today has ended."
         : isFullDay(start, duration)
           ? ""
@@ -404,12 +428,14 @@ function readForm(): VisitorRequest | string {
   const allDay = allDayChecked();
   const { start, duration } = formTimes();
   if (!start || duration <= 0) {
-    return allDay ? "The all-day period today has ended. Choose another day." : "Choose a time.";
+    return "Choose a time.";
+  }
+  if (start + duration * minute <= Date.now()) {
+    return allDay
+      ? "The all-day period today has ended. Choose another day."
+      : "Choose a time that hasn't passed.";
   }
   if (!allDay) {
-    if (start + duration * minute <= Date.now()) {
-      return "Choose a time that hasn't passed.";
-    }
     const hours = checkBookableHours(
       settings,
       start,
@@ -421,6 +447,10 @@ function readForm(): VisitorRequest | string {
       return hours;
     }
   }
+  const reason = input("visitorReason").value.trim();
+  if (!reason && reasonRequired()) {
+    return "Enter the reason for the visit.";
+  }
   const showPass = el("visitorPassField").style.display !== "none";
   const showInternational = el("visitorInternationalField").style.display !== "none";
   return {
@@ -431,7 +461,7 @@ function readForm(): VisitorRequest | string {
     name,
     email,
     company: input("visitorCompany").value.trim(),
-    reason: input("visitorReason").value.trim() || "Visit",
+    reason: reason || "Visit",
     passNumber: showPass ? input("visitorPass").value.trim() : "",
     international: showInternational && input("visitorInternational").checked,
   };

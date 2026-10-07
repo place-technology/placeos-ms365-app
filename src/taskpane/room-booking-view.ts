@@ -14,7 +14,6 @@ import {
 } from "./booking-settings";
 import {
   assetBooking,
-  assetOffsetLimits,
   assetsDisabledForRoom,
   assetsEnabled,
   buildAssetRequest,
@@ -27,6 +26,7 @@ import {
   cateringBookings,
   cateringEnabled,
   cateringProvider,
+  deliveryOffsets,
   filterCateringMenu,
   formatPrice,
   getCateringMenu,
@@ -66,6 +66,7 @@ import {
   spaceFeatures,
   spaceName,
   visitorBookings,
+  minutesOfDay,
   monthlyStartUnsupported,
   monthlyStartUnsupportedMessage,
   weekOfMonth,
@@ -318,7 +319,8 @@ async function changeBuilding(id: string) {
   setText(subtitle, building ? zoneLabel(building) : "");
   // A draft keeps its own body and repeat; all day isn't set on it, so only times are offered.
   show(el("bookNotesField"), !draft && !settings.get<boolean>("events.hide_notes"));
-  show(el("bookRepeatFields"), !draft && settings.get("events.allow_recurrence") !== false);
+  // Workplace's meeting form only offers repeats with app.events.allow_recurrence.
+  show(el("bookRepeatFields"), !draft && settings.get<boolean>("events.allow_recurrence") === true);
   show(el("bookAllDayField"), !draft && allDayAllowed(settings));
   if (draft || !allDayAllowed(settings)) {
     input("bookAllDay").checked = false;
@@ -465,7 +467,7 @@ function updateAllDay() {
     el("bookAllDayTimes"),
     !allDay || !start
       ? ""
-      : duration <= 0
+      : start + duration * minute <= Date.now()
         ? "The all-day period today has ended."
         : isFullDay(start, duration)
           ? ""
@@ -474,42 +476,62 @@ function updateAllDay() {
   updateRepeatFields();
 }
 
+/** app.events.min_duration / max_duration, as Workplace's meeting form (30 and 480 minutes). */
 function durationLimits() {
   const min = settings?.get<number>("events.min_duration", 30) || 30;
   const max = settings?.get<number>("events.max_duration", 480) || 480;
   return { min, max: Math.max(min, max) };
 }
 
+/** The building's timezone for bookable hours (as postForm), else local time. */
+const buildingTimezone = () => org?.buildings.find((b) => b.id === buildingId)?.timezone || "";
+
+/**
+ * End times as Workplace's duration field: from the minimum in app.events.duration_step steps (default 30)
+ * up to the maximum or the end of app.events.bookable_hours, plus app.events.custom_duration_options.
+ * The default is app.events.default_duration (60).
+ */
 function fillEndTimes(keepDuration?: number) {
   const start = +select("bookStart").value;
   const end = select("bookEnd");
-  const previous = keepDuration ?? (end.value ? +end.value : 60);
+  const previous =
+    keepDuration ??
+    (end.value ? +end.value : settings?.get<number>("events.default_duration", 60) || 60);
   end.textContent = "";
   if (!start) {
     return;
   }
   const { min, max } = durationLimits();
-  const first = Math.ceil(min / step) * step;
-  for (let minutes = first; minutes <= max; minutes += step) {
-    option(
-      end,
-      `${minutes}`,
-      `${formatTime(start + minutes * minute)} (${formatDuration(minutes)})`
+  const durationStep = Math.max(1, settings?.get<number>("events.duration_step", 30) || 30);
+  const hours = settings?.get<{ start?: number; end?: number } | null>(
+    "events.bookable_hours",
+    null
+  );
+  const latest =
+    typeof hours?.end === "number"
+      ? Math.max(0, hours.end * 60 - minutesOfDay(start, buildingTimezone()))
+      : Number.POSITIVE_INFINITY;
+  const custom = (settings?.get<number[]>("events.custom_duration_options", []) || [])
+    .map((value) => Math.round(+value || 0))
+    .filter((value) => value > 0 && value <= latest);
+  const durations = new Set(custom);
+  for (let minutes = min; minutes <= Math.min(max, latest); minutes += durationStep) {
+    durations.add(minutes);
+  }
+  Array.from(durations)
+    .sort((a, b) => a - b)
+    .forEach((minutes) =>
+      option(
+        end,
+        `${minutes}`,
+        `${formatTime(start + minutes * minute)} (${formatDuration(minutes)})`
+      )
     );
-  }
-  if (min < first) {
-    // An odd minimum such as 20 minutes: offer it as well.
-    const item = document.createElement("option");
-    item.value = `${min}`;
-    item.textContent = `${formatTime(start + min * minute)} (${formatDuration(min)})`;
-    end.insertBefore(item, end.firstChild);
-  }
-  end.value = `${Math.min(Math.max(previous, min), max)}`;
-  if (!end.value) {
-    end.value = `${Math.max(first, 60)}`;
-  }
+  end.value = `${previous}`;
   if (!end.value && end.options.length) {
-    end.selectedIndex = 0;
+    // The nearest choice that isn't shorter, else the longest.
+    const values = Array.from(end.options).map((item) => +item.value);
+    end.value = `${values.find((value) => value >= previous) ?? values[values.length - 1]}`;
   }
 }
 
@@ -694,8 +716,24 @@ function readForm(): Omit<BookingRequest, "room"> | string {
   if (!title) {
     return "Add a title.";
   }
-  if (allDay && start && duration <= 0) {
+  if (allDay && start && start + duration * minute <= Date.now()) {
     return "The all-day period today has ended. Choose another date.";
+  }
+  // As postForm, bookable hours apply to the all-day period too, in the building's timezone. A start too
+  // late for the shortest booking leaves no end times, so check it with the minimum.
+  const hoursError =
+    start && (duration || !allDay)
+      ? checkBookableHours(
+          settings,
+          start,
+          duration || durationLimits().min,
+          undefined,
+          "Rooms",
+          buildingTimezone()
+        )
+      : "";
+  if (hoursError) {
+    return hoursError;
   }
   if (!start || !duration) {
     return allDay ? "Choose a date." : "Choose a date and time.";
@@ -719,6 +757,13 @@ function readForm(): Omit<BookingRequest, "room"> | string {
     if (pattern === "monthly" && monthlyStartUnsupported(new Date(start))) {
       return monthlyStartUnsupportedMessage;
     }
+    if (
+      allDay &&
+      pattern === "daily" &&
+      !settings.get<boolean>("events.allow_daily_allday_recurrence")
+    ) {
+      return "All-day meetings can't repeat daily. Choose another repeat.";
+    }
     // A whole day is 23 or 25 hours when daylight saving starts or ends.
     if (duration > 24 * 60 && !allDay) {
       return "Bookings longer than a day can't repeat.";
@@ -729,11 +774,6 @@ function readForm(): Omit<BookingRequest, "room"> | string {
       daysOfWeek: days,
       until,
     };
-  }
-  // An all-day booking covers the configured all-day period, not bookable hours (as the legacy add-in).
-  const hoursError = allDay ? "" : checkBookableHours(settings, start, duration);
-  if (hoursError) {
-    return hoursError;
   }
   return {
     title,
@@ -857,7 +897,8 @@ function filteredRooms(ignoreLevel = roomView === "map"): Space[] {
   return candidates.filter(
     (space) =>
       (!level || (space.zones || []).includes(level)) &&
-      (capacity <= 0 || (space.capacity ?? -1) < 0 || (space.capacity ?? 0) >= capacity) &&
+      // As Workplace's Space, a capacity of 0 means unknown, so it matches any filter.
+      (capacity <= 0 || (space.capacity || -1) < 0 || (space.capacity || 0) >= capacity) &&
       (!favourites || favourites.includes(space.id)) &&
       features.every((feature) => spaceFeatures(space).includes(feature))
   );
@@ -1253,10 +1294,14 @@ function chooseRoom(space: Space) {
   loadAssets(space);
 }
 
-function offsetOptions(target: HTMLSelectElement, min: number, max: number) {
+/** Delivery time choices (deliveryOffsets) as "N min after the start (time)". */
+function offsetOptions(
+  target: HTMLSelectElement,
+  { min, max, step: offsetStep }: { min: number; max: number; step: number }
+) {
   const previous = target.value;
   target.textContent = "";
-  for (let offset = min; offset <= max; offset += step) {
+  for (let offset = min; offset <= max; offset += offsetStep) {
     option(
       target,
       `${offset}`,
@@ -1272,6 +1317,9 @@ function offsetOptions(target: HTMLSelectElement, min: number, max: number) {
 }
 
 let cateringSeq = 0;
+
+/** The room's building (its level's parent), where Workplace looks for its menu, assets and rules. */
+const roomBuildingId = (space: Space) => org?.levelFor(space.zones)?.parent_id || buildingId;
 
 async function loadCatering(space: Space) {
   const section = el("bookCatering");
@@ -1291,8 +1339,7 @@ async function loadCatering(space: Space) {
   show(section, true);
   setText(el("bookCateringStatus"), "Loading the menu...", "detail");
   try {
-    const level = org.levelFor(space.zones);
-    const zoneId = level?.parent_id || buildingId;
+    const zoneId = roomBuildingId(space);
     const building = org.buildings.find((b) => b.id === buildingId) as
       { currency?: string } | undefined;
     const provider = cateringProvider(settings);
@@ -1305,8 +1352,9 @@ async function loadCatering(space: Space) {
     }
     // With app.catering_provider set, only that caterer's items are offered.
     const items = provider ? menuItems.filter((item) => item.caterer === provider) : menuItems;
-    if (!items.length) {
-      // No menu for this building (or nothing orderable this close to the meeting).
+    if (!items.length || cateringConfig.disabledRooms.includes(space.id)) {
+      // No menu for this building (or nothing orderable this close to the meeting), or the room is in
+      // "catering-settings" disabled_rooms.
       show(section, false);
       return;
     }
@@ -1315,12 +1363,7 @@ async function loadCatering(space: Space) {
     cateringSelections = items.map((item) => ({ item, quantity: 0, optionIds: [] }));
     resetCateringFilters();
     renderCateringMenu();
-    const min = settings.get<number>("catering.min_offset", 0) || 0;
-    const max = Math.max(
-      min,
-      duration - (settings.get<number>("catering.end_offset", 0) || 0) - step
-    );
-    offsetOptions(select("bookCateringDeliver"), min, Math.max(min, max));
+    offsetOptions(select("bookCateringDeliver"), deliveryOffsets(settings, "catering", duration));
     const codes = select("bookChargeCode");
     codes.textContent = "";
     option(codes, "", "None");
@@ -1627,7 +1670,7 @@ async function loadAssets(space: Space) {
       }
       return;
     }
-    const types = await getAvailableAssetTypes(api, buildingId, space, start, duration);
+    const types = await getAvailableAssetTypes(api, roomBuildingId(space), space, start, duration);
     if (seq !== assetsSeq) {
       return;
     }
@@ -1647,8 +1690,7 @@ async function loadAssets(space: Space) {
       renderAssetList
     );
     renderAssetList();
-    const { min, max } = assetOffsetLimits(settings, duration - step);
-    offsetOptions(select("bookAssetsDeliver"), min, max);
+    offsetOptions(select("bookAssetsDeliver"), deliveryOffsets(settings, "assets", duration));
   } catch (error) {
     if (seq !== assetsSeq) {
       return;
@@ -1782,7 +1824,7 @@ async function submit() {
     const assetRequest = chosenAssets.length
       ? buildAssetRequest(
           chosenAssets,
-          await getAvailableAssetTypes(api, buildingId, room, start, duration),
+          await getAvailableAssetTypes(api, roomBuildingId(room), room, start, duration),
           start,
           +select("bookAssetsDeliver").value || 0
         )
@@ -1822,9 +1864,9 @@ async function submit() {
 
     const event = await createEvent(api, body);
     const linked = [
-      ...visitorBookings(request, org),
+      ...visitorBookings(request, org, body.host),
       ...cateringBookings(orders, room, roomName),
-      ...(assetRequest ? [assetBooking(assetRequest, room, roomName)] : []),
+      ...(assetRequest ? [assetBooking(assetRequest, room, roomName, org.user.email)] : []),
     ];
     if (linked.length) {
       try {
@@ -1840,7 +1882,8 @@ async function submit() {
         );
       } catch (error) {
         console.error(error);
-        await removeEvent(api, event, body.host, room.id).catch((e) => console.error(e));
+        // As postForm's rollback: the organiser's calendar, not a forced or room host.
+        await removeEvent(api, event, org.user.email, room.id).catch((e) => console.error(e));
         throw new Error(
           error instanceof PlaceosRequestError && error.status === 409
             ? "Some of the catering or assets were just booked by someone else, so the booking was cancelled. Try again."

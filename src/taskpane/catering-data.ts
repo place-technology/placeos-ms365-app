@@ -27,12 +27,20 @@ export type CateringItem = {
   tags: string[];
   options: CateringOption[];
   images: string[];
+  // Zones (e.g. levels) whose rooms can't order the item.
+  hide_for_zones: string[];
 };
 
 /** A menu item the user picked: quantity and chosen option ids. */
 export type CateringSelection = { item: CateringItem; quantity: number; optionIds: string[] };
 
-export type CateringSettings = { requireNotes: boolean; chargeCodes: string[]; currency: string };
+export type CateringSettings = {
+  requireNotes: boolean;
+  chargeCodes: string[];
+  currency: string;
+  // Rooms that can't have catering ("catering-settings" disabled_rooms).
+  disabledRooms: string[];
+};
 
 type AssetCategory = { id: string; name: string; created_at?: number };
 type AssetType = { id: string; name: string };
@@ -44,10 +52,11 @@ type Asset = {
   other_data?: {
     category?: string;
     description?: string;
-    unit_price?: number;
+    unit_price?: number | string;
     options?: CateringOption[];
     tags?: string[];
     images?: string[];
+    hide_for_zones?: string[];
   };
 };
 
@@ -62,15 +71,16 @@ export async function getCateringSettings(
   settings: AppSettings,
   buildingCurrency?: string
 ): Promise<CateringSettings> {
-  const details = await getMetadata<{ require_notes?: boolean; charge_codes?: string[] }>(
-    api,
-    buildingId,
-    "catering-settings"
-  );
+  const details = await getMetadata<{
+    require_notes?: boolean;
+    charge_codes?: string[];
+    disabled_rooms?: string[];
+  }>(api, buildingId, "catering-settings");
   return {
     requireNotes: !!settings.get("events.catering_notes_required") || !!details?.require_notes,
     chargeCodes: Array.isArray(details?.charge_codes) ? details.charge_codes : [],
     currency: settings.get<string>("currency") || buildingCurrency || "USD",
+    disabledRooms: Array.isArray(details?.disabled_rooms) ? details.disabled_rooms : [],
   };
 }
 
@@ -133,7 +143,10 @@ export function attachedRulesAllow(
   return true;
 }
 
-/** Menu items available in the zone (the room's building) for this booking. */
+/**
+ * Menu items available in the zone (the room's building) for this booking: not hidden for the room's zones
+ * (hide_for_zones) and allowed by the lead-time rules. As Workplace's CateringOrderStateService.orderAvailable.
+ */
 export async function getCateringMenu(
   api: PlaceosApi,
   zoneId: string,
@@ -141,10 +154,11 @@ export async function getCateringMenu(
   start: number,
   duration: number
 ): Promise<CateringItem[]> {
+  // The oldest category with the name, as libs/assets findOldestByName.
   const categories = list(
     await api<AssetCategory[]>("/api/engine/v2/asset_categories?hidden=true&limit=500", allPages)
   )
-    .filter((category) => category.name === "_CATERING_")
+    .filter((category) => (category.name || "").trim().toLowerCase() === "_catering_")
     .sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
   if (!categories.length) {
     return [];
@@ -178,18 +192,38 @@ export async function getCateringMenu(
         caterer: caterer === "_STANDALONE_" ? "standalone" : caterer,
         category: data.category || "Other",
         description: data.description,
-        unit_price: data.unit_price || 0,
-        tags: data.tags || [],
-        options: data.options || [],
+        unit_price: +(data.unit_price || 0) || 0,
+        tags: Array.isArray(data.tags) ? data.tags : [],
+        options: Array.isArray(data.options) ? data.options : [],
         images: asset.images?.length ? asset.images : data.images || [],
+        hide_for_zones: Array.isArray(data.hide_for_zones) ? data.hide_for_zones : [],
       });
     }
   }
   return items
-    .filter((item) =>
-      attachedRulesAllow([item.category, ...item.tags], rules, room, start, duration)
+    .filter(
+      (item) =>
+        !item.hide_for_zones.some((zone) => (room.zones || []).includes(zone)) &&
+        attachedRulesAllow([item.category, ...item.tags], rules, room, start, duration)
     )
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Delivery time choices in minutes after the start, as Workplace's catering and asset filters: from
+ * app.<kind>.min_offset to the duration less app.<kind>.end_offset (at least 15 minutes), in
+ * app.<kind>.step_interval steps (default 5). Asset deliveries end a minute earlier (asset-filters).
+ */
+export function deliveryOffsets(
+  settings: AppSettings,
+  kind: "catering" | "assets",
+  duration: number
+): { min: number; max: number; step: number } {
+  const min = Math.max(0, settings.get<number>(`${kind}.min_offset`, 0) || 0);
+  const latest = Math.max(15, duration - (settings.get<number>(`${kind}.end_offset`, 0) || 0));
+  const max = Math.min(duration, 24 * 60 - 1, latest) - (kind === "assets" ? 1 : 0);
+  const step = Math.max(1, settings.get<number>(`${kind}.step_interval`, 5) || 5);
+  return { min, max: Math.max(min, max), step };
 }
 
 /** The caterer every menu item must come from (app.catering_provider), if the building has one. */

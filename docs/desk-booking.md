@@ -6,7 +6,7 @@ Status (2026-10-06): implemented. It builds, type-checks and passes lint, but ha
 
 ## Assets only
 
-Desks are read only as Assets: asset type `_DESKS_` in the hidden asset category `_DESKS_`, with `zone_id` = the desk's level. The legacy `desks` zone metadata isn't read, on purpose, because Assets are the way forward. Workplace creates the category and type when they're missing. The add-in only reads them and never creates them. The Today view still shows names for bookings of either kind.
+Desks are read only as Assets: asset type `_DESKS_` in the hidden asset category `_DESKS_`, with `zone_id` = the desk's level. The category and type names are compared without case and without spaces at the ends, as Workplace does. A desk asset must have `bookable: true`. The legacy `desks` zone metadata isn't read, on purpose, because Assets are the way forward. Workplace creates the category and type when they're missing. The add-in only reads them and never creates them. The Today view still shows names for bookings of either kind.
 
 ## Outstanding questions
 
@@ -33,6 +33,7 @@ Desk bookings on the Today view have **Check in**, **Check out** and **Cancel** 
 * Auto-allocation (`desks.auto_allocation`), the nearby-desk preselect, and favourite desks.
 * Lockers (`desks.can_book_lockers`), assets with a desk (`desks.allow_assets`) and payments.
 * Custom duration options (`custom_duration_options`).
+* `desks.allow_time_changes: false` (Workplace then hides the time fields and the all-day option), `desks.hide_map` and `desks.default_select_as_map`.
 
 ## Parking
 
@@ -44,7 +45,8 @@ Outstanding questions:
 2. **Title.** Workplace's parking form asks for a title. The add-in sends "Parking Booking", as it sends "Desk Booking" for desks.
 3. **Assigned space.** Handled like an assigned desk: with `assigned_resource_booking` other than `allow`, the user sees their space and can't book another. Workplace's parking page only shows the assigned space instead of the form when the user also has a parking booking today, but its submit check blocks the booking either way.
 4. **Home location.** With `parking.restrict_home_location`, only the selected building's desk assets are checked for a desk assigned to the user. Workplace looks for the first building with one, so someone with assigned desks in two buildings is treated slightly differently.
-5. **Plate number.** It isn't saved to the user's settings. Workplace reads the `plate_number` user setting but doesn't write it either.
-6. **`allow_all_day`.** Workplace reads `parking.allow_all_day || bookings.allow_all_day`, defaulting to on, so a `false` on parking is ignored unless bookings is also `false`. The add-in uses `parking.allow_all_day ?? bookings.allow_all_day ?? true`, as for desks.
+5. **Plate number.** It is filled in only for a user with a parking user entry, from the `plate_number` user setting, else from that entry, as Workplace does. It isn't saved to the user's settings. Workplace doesn't save it either.
+6. **Spaces and durations.** A parking space is bookable unless its `bookable` is `false`, because Workplace uses the raw parking asset. End times go up in 15 minute steps, because Workplace's parking form uses the default step of its duration field and doesn't read `duration_step`.
+7. **`allow_all_day`.** Workplace reads `parking.allow_all_day || bookings.allow_all_day`, defaulting to on, so a `false` on parking is ignored unless bookings is also `false`. The add-in uses `parking.allow_all_day ?? bookings.allow_all_day ?? true`, as for desks.
 
 Not ported: parking requests (`parking-request-flow`, unallocated spaces and the waitlist), booking for someone else, fleet vehicles, `space_restrictions`, favourite spaces, and the legacy `parking-spaces` zone metadata.
