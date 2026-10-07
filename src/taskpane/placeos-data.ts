@@ -88,14 +88,17 @@ export async function getDeskSummary(api: PlaceosApi, buildingId: string): Promi
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-  const booked = await api<string[]>(
+  // Paged like Workplace's bookedResourceList (libs/bookings bookings.fn.ts): at least 200 per page.
+  const booked = await api<string[] | { results?: string[] }>(
     `/api/staff/v1/bookings/booked?type=desk&period_start=${Math.floor(start.getTime() / 1000)}` +
-      `&period_end=${Math.floor(end.getTime() / 1000)}&zones=${building}`
+      `&period_end=${Math.floor(end.getTime() / 1000)}&zones=${building}&limit=200`,
+    allPages
   );
 
   return {
     levels: deskLists.length,
     desks: deskLists.reduce((total, desks) => total + desks.length, 0),
-    bookedToday: booked.length,
+    // Workplace removes duplicates too.
+    bookedToday: new Set(resultList(booked)).size,
   };
 }

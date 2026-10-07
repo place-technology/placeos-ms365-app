@@ -152,10 +152,29 @@ export function deskDurationLimits(settings: AppSettings, kind: ResourceKind = "
   return { min, max: Math.max(min, pick("max_duration", 480)) };
 }
 
-const oldest = <T extends Named>(items: T[], name: string): T | undefined =>
-  items
-    .filter((item) => item.name === name)
+/**
+ * Minutes between end time options. Desks: app.desks.duration_step, else app.bookings.duration_step, else 30
+ * (Workplace's desk form). Parking: always 15, because Workplace's parking form uses its duration field's
+ * default step.
+ */
+export function deskDurationStep(settings: AppSettings, kind: ResourceKind = "desk"): number {
+  if (kind === "parking") {
+    return 15;
+  }
+  return (
+    settings.get<number>("desks.duration_step") ||
+    settings.get<number>("bookings.duration_step") ||
+    30
+  );
+}
+
+/** As assets.fn findOldestByName: the oldest item whose name matches, ignoring case and spaces at the ends. */
+const oldest = <T extends Named>(items: T[], name: string): T | undefined => {
+  const match = name.trim().toLowerCase();
+  return items
+    .filter((item) => (item.name || "").trim().toLowerCase() === match)
     .sort((a, b) => (a.created_at ?? 0) - (b.created_at ?? 0))[0];
+};
 
 const typeIds = new Map<string, Promise<string | null>>();
 
@@ -194,8 +213,9 @@ export const getResourceTypeId = (api: PlaceosApi, kind: ResourceKind) =>
   getAssetTypeId(api, kinds[kind].category, kinds[kind].type);
 
 /**
- * As desk-assets.fn deskFromAsset: the name is the identifier, and bookable must be set. Workplace's parking
- * list doesn't check bookable, but its Concierge sets it on every space.
+ * As desk-assets.fn deskFromAsset: the name is the identifier. A desk must have bookable set (Workplace's Desk
+ * makes a missing bookable false). A parking space is bookable unless bookable is false, because Workplace
+ * uses the raw parking asset.
  */
 function deskFromAsset(asset: ResourceAsset, level: Zone, kind: ResourceKind): Desk {
   return {
@@ -205,7 +225,7 @@ function deskFromAsset(asset: ResourceAsset, level: Zone, kind: ResourceKind): D
     map_id: asset.map_id || asset.id,
     level,
     zones: asset.zones || [],
-    bookable: asset.bookable === true,
+    bookable: kind === "parking" ? asset.bookable !== false : asset.bookable === true,
     groups: asset.place_groups || [],
     features: asset.features || [],
     assigned_to: asset.assigned_to || "",

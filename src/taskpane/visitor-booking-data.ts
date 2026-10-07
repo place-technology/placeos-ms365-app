@@ -89,17 +89,24 @@ type ExistingBooking = {
   status?: string;
   rejected?: boolean;
   deleted?: boolean;
+  booking_end?: number;
+  checked_out_at?: number;
 };
 
+// Not cancelled, declined or ended, as Workplace's Booking.status works it out: an ended booking was
+// checked out or its end has passed.
 const isActive = (booking: ExistingBooking) =>
   !booking.rejected &&
   !booking.deleted &&
-  !["declined", "cancelled"].includes(booking.status || "");
+  !["declined", "cancelled"].includes(booking.status || "") &&
+  !booking.checked_out_at &&
+  !(booking.booking_end && booking.booking_end * 1000 < Date.now());
 
 /**
  * Workplace's check just before booking (_checkResourceAvailable). Returns an error message, or "".
  * The visitor may already be invited by the user at this time, or the user may have reached
  * app.bookings.allowed_daily_visitor_count (default 1; 0 or less turns the limit off) for overlapping visits.
+ * If the bookings can't be read, the check passes, as Workplace's queryBookings returns [] on errors.
  */
 export async function checkBeforeInvite(
   api: PlaceosApi,
@@ -111,7 +118,7 @@ export async function checkBeforeInvite(
     `/api/staff/v1/bookings?period_start=${unix(request.start)}` +
       `&period_end=${unix(request.start + request.duration * 60000)}&type=visitor` +
       `&email=${encodeURIComponent(org.user.email)}&limit=1000`
-  );
+  ).catch((): ExistingBooking[] => []);
   const active = resultList(bookings).filter(isActive);
   const email = request.email.toLowerCase();
   if (active.some((booking) => (booking.asset_id || "").toLowerCase() === email)) {
@@ -147,12 +154,11 @@ export function buildVisitorBooking(
   org: Organisation,
   settings: AppSettings
 ) {
+  // Workplace's BookingFormService.timezone: use_building_timezone resolved as visitorSetting does.
   const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const timezone =
-    settings.get<boolean>("bookings.use_building_timezone") ||
-    settings.get<boolean>("visitors.use_building_timezone")
-      ? org.buildings.find((b) => b.id === request.buildingId)?.timezone || browserTimezone
-      : browserTimezone;
+  const timezone = visitorSetting<boolean>(settings, "use_building_timezone", false)
+    ? org.buildings.find((b) => b.id === request.buildingId)?.timezone || browserTimezone
+    : browserTimezone;
   const fullDay = request.allDay && isFullDay(request.start, request.duration);
   const duration = fullDay ? request.duration - 1 : request.duration;
   const user = org.user;

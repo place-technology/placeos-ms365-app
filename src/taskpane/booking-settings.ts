@@ -116,14 +116,19 @@ export class Organisation {
       this.api<CurrentUser>("/api/engine/v2/users/current"),
     ]);
     this.user = user;
-    const orgId = authority.config?.org_zone;
     const zones = (query: string) => this.api<Zone[]>(`/api/engine/v2/zones?${query}`, allPages);
 
-    if (orgId) {
-      this.org = await this.api<Zone>(`/api/engine/v2/zones/${encodeURIComponent(orgId)}`).catch(
+    // As Workplace: the zone tagged "org" that is the authority's org_zone, else the first one. If no zone has
+    // the tag, the org_zone itself.
+    const orgZone = authority.config?.org_zone;
+    const orgs = await zones("tags=org").catch(() => [] as Zone[]);
+    this.org = orgs.find((zone) => zone.id === orgZone) || orgs[0] || null;
+    if (!this.org && orgZone) {
+      this.org = await this.api<Zone>(`/api/engine/v2/zones/${encodeURIComponent(orgZone)}`).catch(
         () => null
       );
     }
+    const orgId = this.org?.id || orgZone;
     const [regions, userSettings] = await Promise.all([
       orgId
         ? zones(`tags=region&parent_id=${encodeURIComponent(orgId)}&limit=200`).catch(() => [])

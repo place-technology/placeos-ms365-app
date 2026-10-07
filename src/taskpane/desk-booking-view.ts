@@ -23,6 +23,7 @@ import {
   createDeskBooking,
   deskAllDayAllowed,
   deskDurationLimits,
+  deskDurationStep,
   getBookedDeskIds,
   getDeskRules,
   getDesks,
@@ -77,9 +78,9 @@ let parkingUser: ParkingUser | null = null;
 
 let request: DeskRequest | null = null;
 // Desks step. candidates are the free desks the user may book; searchedDesks also has the booked ones and
-// those the user can't book (for the map).
+// those the user can't book (for the map). bookedIds are the desks booked at this time, by anyone.
 let searchedDesks: Desk[] = [];
-let allowedIds = new Set<string>();
+let bookedIds = new Set<string>();
 let candidates: Desk[] = [];
 let deskView: "list" | "map" = "list";
 let floorMap: FloorMap | null = null;
@@ -357,9 +358,11 @@ async function parkingRestriction(id: string): Promise<string> {
     console.error(error);
     return null;
   });
+  // As Workplace's parking form: only a parking user gets the plate filled in, from their plate_number user
+  // setting, else their entry.
   const plate = input("deskPlate");
-  if (!plate.value) {
-    plate.value = `${org.userSettings.plate_number || ""}` || parkingUser?.plate_number || "";
+  if (!plate.value && parkingUser) {
+    plate.value = `${org.userSettings.plate_number || ""}` || parkingUser.plate_number;
   }
   if (parkingUser?.deny) {
     return "Your user account is not allowed to book parking in this building.";
@@ -440,7 +443,9 @@ function fillTimes() {
   if (!start.value && start.options.length) {
     start.selectedIndex = 0;
   }
-  fillEndTimes(previous ? undefined : ownSetting<number>("default_duration") || 60);
+  fillEndTimes(
+    previous ? undefined : kindSetting<number>(settings, kind, "default_duration") || 60
+  );
   updateAllDay();
 }
 
@@ -448,7 +453,7 @@ const allDayChecked = () => deskAllDayAllowed(settings, kind) && input("deskAllD
 
 /** The all-day period: app.desk(s)/parking.all_day_period, else app.bookings.all_day_period. */
 const deskAllDayPeriod = (day: number) =>
-  allDayPeriod(settings, day, Date.now(), kindSetting(settings, kind, "all_day_period", null));
+  allDayPeriod(settings, day, kindSetting(settings, kind, "all_day_period", null));
 
 /** The chosen start (ms) and duration (minutes): the all-day period, or the start and end pickers. */
 function formTimes(): { start: number; duration: number } {
@@ -467,7 +472,7 @@ function updateAllDay() {
     el("deskAllDayTimes"),
     !allDay || !start
       ? ""
-      : duration <= 0
+      : start + duration * minute <= Date.now()
         ? "The all-day period today has ended."
         : isFullDay(start, duration)
           ? ""
@@ -475,9 +480,7 @@ function updateAllDay() {
   );
 }
 
-/**
- * End times from the shortest to the longest booking, in app.desks/parking.duration_step (30 minute) steps.
- */
+/** End times from the shortest to the longest booking, in deskDurationStep steps. */
 function fillEndTimes(keepDuration?: number) {
   const start = +select("deskStart").value;
   const end = select("deskEnd");
@@ -487,7 +490,7 @@ function fillEndTimes(keepDuration?: number) {
     return;
   }
   const { min, max } = deskDurationLimits(settings, kind);
-  const step = ownSetting<number>("duration_step") || 30;
+  const step = deskDurationStep(settings, kind);
   for (let minutes = min; minutes <= max; minutes += step) {
     option(
       end,
@@ -513,7 +516,10 @@ function readForm(): DeskRequest | string {
   const allDay = allDayChecked();
   const { start, duration } = formTimes();
   if (!start || duration <= 0) {
-    return allDay ? "The all-day period today has ended. Choose another day." : "Choose a time.";
+    return "Choose a time.";
+  }
+  if (allDay && start + duration * minute <= Date.now()) {
+    return "The all-day period today has ended. Choose another day.";
   }
   if (!allDay) {
     if (start + duration * minute <= Date.now()) {
@@ -580,7 +586,7 @@ async function findDesks() {
     const booked = await getBookedDeskIds(api, zoneId, form, desks.length, kind);
     const allowed = bookableDesks(desks, rules, form, org.user.groups || []);
     searchedDesks = desks;
-    allowedIds = new Set(allowed.map((desk) => desk.id));
+    bookedIds = booked;
     candidates = allowed.filter((desk) => !booked.has(desk.id)).sort(byLevelAndName);
     mapSelection = null;
     setText(el("deskFormError"), "");
@@ -838,12 +844,12 @@ async function renderMap() {
   const free = new Set(filteredDesks(true).map((desk) => desk.id));
   const freeAnyFilter = new Set(candidates.map((desk) => desk.id));
   const onLevel = searchedDesks.filter((desk) => desk.level.id === level.id);
-  // Free desks that match the filters are green, booked desks red, and the rest (filtered out, or not
-  // bookable by this user) grey.
+  // As Workplace's desk and parking maps: free desks that match the filters are green, booked desks red
+  // (whoever may book them), and the rest (filtered out, or not bookable by this user) grey.
   const desks: MapRoom[] = onLevel.map((desk) => {
     const status: MapRoomStatus = free.has(desk.id)
       ? "free"
-      : allowedIds.has(desk.id) && !freeAnyFilter.has(desk.id)
+      : bookedIds.has(desk.id)
         ? "busy"
         : "filtered";
     const label = {

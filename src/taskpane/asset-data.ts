@@ -29,10 +29,15 @@ export type AssetType = AssetTypeRecord & { category: string; available: string[
 /** A requested asset type and quantity. */
 export type AssetSelection = { type: AssetType; quantity: number };
 
-/** Assets are offered when app.events.allow_assets is set (and app.has_assets isn't false). */
+/**
+ * Assets are offered when app.events.allow_assets (legacy add-in) or app.events.has_assets (Workplace) is
+ * set, and app.has_assets isn't false (AssetStateService).
+ */
 export function assetsEnabled(settings: AppSettings): boolean {
   return (
-    settings.get<boolean>("events.allow_assets") === true && settings.get("has_assets") !== false
+    (settings.get<boolean>("events.allow_assets") === true ||
+      settings.get<boolean>("events.has_assets") === true) &&
+    settings.get("has_assets") !== false
   );
 }
 
@@ -119,15 +124,6 @@ export function filterAssetTypes(
   );
 }
 
-/** Delivery offset limits in minutes after the start (app.assets.min_offset / end_offset). */
-export function assetOffsetLimits(settings: AppSettings, duration: number) {
-  const min = settings.get<number>("assets.min_offset", 0) || 0;
-  return {
-    min,
-    max: Math.max(min, duration - (settings.get<number>("assets.end_offset", 0) || 0)),
-  };
-}
-
 const requestId = () => `order-${Math.floor(1000000 + Math.random() * 8999999)}`;
 
 /**
@@ -173,7 +169,13 @@ export function buildAssetRequest(
 
 export type AssetRequest = NonNullable<ReturnType<typeof buildAssetRequest>>;
 
-export function assetBooking(request: AssetRequest, room: Space, roomName: string): LinkedBooking {
+/** The asset-request booking, made for the user rather than the event host (validateAssetRequestsForResource). */
+export function assetBooking(
+  request: AssetRequest,
+  room: Space,
+  roomName: string,
+  userEmail: string
+): LinkedBooking {
   const ids = request.items.flatMap((item) => item.item_ids);
   const names = request.items.map((item) => item.name).join(", ");
   return {
@@ -183,6 +185,7 @@ export function assetBooking(request: AssetRequest, room: Space, roomName: strin
     asset_name: names,
     title: names,
     description: roomName,
+    user_email: userEmail,
     extension_data: { request_id: request.id, location_id: room.id, request },
   };
 }

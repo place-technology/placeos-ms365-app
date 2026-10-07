@@ -277,7 +277,7 @@ export async function loadTodayOverview(
           return item ? [item] : [];
         })
       : Promise.resolve(),
-    loadCard(lists.rooms, "No room bookings today", async () => roomItems(await events)),
+    loadCard(lists.rooms, "No room bookings today", async () => roomItems(await events, lookups)),
     loadCard(lists.desks, "No desk booked today", () => deskItems(api, lookups, settingsFor)),
     loadCard(lists.parking, "No parking booked today", () =>
       parkingItems(api, lookups, settingsFor)

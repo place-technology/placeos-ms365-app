@@ -42,7 +42,7 @@ export async function placeosFetch<T>(
   const items: unknown[] = [];
   const seen = new Set<string>();
   let next: string | null = path;
-  while (next && !seen.has(next)) {
+  for (let pages = 0; next && !seen.has(next) && pages < maxPages; pages++) {
     seen.add(next);
     const page = await placeosRequest(next, accessToken, fetchInit);
     if (!Array.isArray(page.data)) {
@@ -50,15 +50,23 @@ export async function placeosFetch<T>(
       return page.data as T;
     }
     items.push(...page.data);
-    next = nextPageLink(page.response.headers.get("Link"));
+    next = nextPagePath(path, page.response.headers.get("Link"));
   }
   return items as T;
 }
 
-/** The rel="next" URL from a Link header, as engine list routes send (PlaceOS/rest-api `paginate_sql`). */
-function nextPageLink(link: string | null): string | null {
+// Most pages followed for one list, as Workplace's MAX_PAGES (libs/bookings bookings.fn.ts).
+const maxPages = 50;
+
+/**
+ * The next page of `path`, from the rel="next" link that list routes send (PlaceOS/rest-api `paginate_sql`).
+ * Like ts-client (`handleHeaders`), only the link's query string is used, on the original path, so the
+ * request stays on this origin whatever host the link names.
+ */
+function nextPagePath(path: string, link: string | null): string | null {
   const match = link?.match(/<([^>]+)>\s*;\s*rel="?next"?/);
-  return match ? match[1] : null;
+  const query = match?.[1].split("?")[1];
+  return query ? `${path.split("?")[0]}?${query}` : null;
 }
 
 async function placeosRequest(

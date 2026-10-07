@@ -4,6 +4,8 @@
  * Desk and parking bookings can be checked in, checked out and cancelled, as in Workplace's booking details.
  */
 
+/* global DOMParser */
+
 import type { AppSettings } from "./booking-settings";
 import type { PlaceosApi } from "./placeos-data";
 
@@ -40,6 +42,7 @@ type Attendee = {
   visit_expected?: boolean;
   checked_in?: boolean;
   organisation?: string;
+  response_status?: string;
 };
 
 type CalendarEvent = {
@@ -52,8 +55,15 @@ type CalendarEvent = {
   private?: boolean;
   location?: string;
   online_meeting_url?: string;
+  meeting_url?: string;
   attendees?: Attendee[];
-  system?: { id: string; name: string; display_name?: string } | null;
+  system?: {
+    id: string;
+    name: string;
+    display_name?: string;
+    email?: string;
+    zones?: string[];
+  } | null;
   extension_data?: { custom_all_day?: boolean };
 };
 
@@ -63,6 +73,7 @@ type Booking = {
   booking_end: number;
   all_day?: boolean;
   asset_id?: string;
+  asset_name?: string;
   description?: string;
   title?: string;
   zones?: string[];
@@ -87,6 +98,8 @@ type Booking = {
     group_members?: { name?: string; email?: string }[];
     custom_all_day?: boolean;
     map_id?: string;
+    checked_out_at?: number;
+    removed_from_group?: boolean;
   };
 };
 
@@ -108,6 +121,10 @@ const periodQuery = ({ start, end }: { start: number; end: number }) =>
  */
 const isAllDay = (item: { all_day?: boolean; extension_data?: { custom_all_day?: boolean } }) =>
   !!item.all_day || !!item.extension_data?.custom_all_day;
+
+/** Bookings also show as all day from 12 hours long, as Workplace's Booking.is_all_day. */
+const isAllDayBooking = (booking: Booking) =>
+  isAllDay(booking) || booking.booking_end - booking.booking_start >= 12 * 3600;
 
 function timeRange(start: number, end: number, allDay?: boolean): string {
   if (allDay) {
@@ -141,31 +158,112 @@ function timingBadge(start: number, end: number): TodayItem["badge"] {
   return now >= end ? { text: "Ended", kind: "" } : undefined;
 }
 
-/** Status badge from the server-computed state, falling back to the flags. */
-function bookingBadge(booking: Booking, checkedInText: string): TodayItem["badge"] {
-  const state = booking.current_state;
-  if (state === "checked_in" || booking.checked_in) {
-    return { text: checkedInText, kind: "ok" };
+/**
+ * Booking status, in the order of Workplace's Booking class: cancelled (deleted), declined (rejected),
+ * ended (checked out or past its end), else open. The server-computed current_state is also used.
+ */
+function bookingStatus(booking: Booking): "cancelled" | "declined" | "ended" | "open" {
+  const state = booking.current_state || "";
+  if (booking.deleted || booking.status === "cancelled" || state === "cancelled") {
+    return "cancelled";
   }
-  if (state === "rejected" || booking.rejected) {
+  if (booking.rejected || booking.status === "declined" || state === "rejected") {
+    return "declined";
+  }
+  if (
+    !!booking.checked_out_at ||
+    !!booking.extension_data?.checked_out_at ||
+    ["checked_out", "ended"].includes(state) ||
+    Date.now() / 1000 >= booking.booking_end
+  ) {
+    return "ended";
+  }
+  return "open";
+}
+
+/** Status badge. "Checked in" only shows while the booking is still on, as Workplace's booking card. */
+function bookingBadge(booking: Booking, checkedInText: string): TodayItem["badge"] {
+  const status = bookingStatus(booking);
+  if (status === "cancelled") {
+    return { text: "Cancelled", kind: "error" };
+  }
+  if (status === "declined") {
     return { text: "Declined", kind: "error" };
   }
-  if (state === "no_show") {
-    return { text: "No show", kind: "error" };
-  }
-  if (state === "checked_out" || state === "ended") {
+  if (status === "ended") {
     return { text: "Ended", kind: "" };
+  }
+  if (booking.checked_in || booking.current_state === "checked_in") {
+    return { text: checkedInText, kind: "ok" };
+  }
+  if (booking.current_state === "no_show") {
+    return { text: "No show", kind: "error" };
   }
   return timingBadge(booking.booking_start, booking.booking_end);
 }
 
-/** Desk or parking space name stored on the booking, as Workplace shows it. */
+/** Text of a description that may hold HTML, as Workplace's booking card shows it. */
+const plainText = (html = "") =>
+  html ? new DOMParser().parseFromString(html, "text/html").body.textContent || "" : "";
+
+/**
+ * Desk or parking space name stored on the booking, as Workplace's booking card: the description, else
+ * asset_name (Booking.asset_name). assigned_asset_name is what the add-in's desk booking also sets.
+ */
 const storedAssetName = (booking: Booking) =>
-  booking.description ||
-  booking.extension_data?.assigned_asset_name ||
+  plainText(booking.description).trim() ||
+  booking.asset_name ||
   booking.extension_data?.asset_name ||
   booking.extension_data?.name ||
+  booking.extension_data?.assigned_asset_name ||
   "";
+
+/** "jane.doe@x.com" as "Jane Doe", as Workplace's formatEmailName. */
+function emailName(value: string): string {
+  if (!value.includes("@")) {
+    return value;
+  }
+  const local = value
+    .split("@")[0]
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return local ? local.replace(/\b\w/g, (char) => char.toUpperCase()) : value;
+}
+
+/**
+ * A visitor booking's visitor name, as Workplace's visitorDisplayNameFor: the group member or attendee
+ * with the visitor's email (asset_id), else the first attendee, else the stored name unless it's only the
+ * email or the reason, else the email shown as a name.
+ */
+function visitorName(booking: Booking): string {
+  const email = (booking.asset_id || "").trim();
+  const member = booking.extension_data?.group_members?.find((m) => m?.email === booking.asset_id);
+  const attendee =
+    booking.attendees?.find((a) => a?.email === booking.asset_id) || booking.attendees?.[0];
+  const named = (member?.name || "").trim() || (attendee?.name || "").trim();
+  if (named) {
+    return named;
+  }
+  const stored = (
+    booking.extension_data?.visitor_name ||
+    booking.asset_name ||
+    booking.extension_data?.asset_name ||
+    booking.extension_data?.name ||
+    ""
+  ).trim();
+  const reasons = [booking.title, booking.description]
+    .map((value) => (value || "").trim().toLowerCase())
+    .filter(Boolean);
+  if (
+    stored &&
+    stored.toLowerCase() !== email.toLowerCase() &&
+    !reasons.includes(stored.toLowerCase())
+  ) {
+    return stored;
+  }
+  return emailName(email || stored || "Visitor");
+}
 
 type Asset = { id: string; name?: string; identifier?: string };
 
@@ -207,7 +305,6 @@ export class PlaceosLookups {
     return asset?.name || asset?.identifier || "";
   }
 
-  /** "Level 3, Sydney Office" from a booking's zones (usually org, region, building, level). */
   /** The level among a booking's zones. */
   async level(zoneIds: string[] = []): Promise<Zone | null> {
     const zones = await Promise.all(zoneIds.map((id) => this.get(id)));
@@ -231,6 +328,7 @@ export class PlaceosLookups {
     };
   }
 
+  /** "Level 3, Sydney Office" from a booking's or room's zones (usually org, region, building, level). */
   async location(zoneIds: string[] = []): Promise<string> {
     const zones = (await Promise.all(zoneIds.map((id) => this.get(id)))).filter(
       (zone): zone is Zone => !!zone
@@ -248,11 +346,15 @@ export function getEvents(api: PlaceosApi, period = todayPeriod()) {
   return api<CalendarEvent[]>(`/api/staff/v1/events?${periodQuery(period)}`);
 }
 
+/**
+ * The caller's bookings of a type, with the query Workplace's schedule sends. Cancelled (deleted) bookings
+ * are included, and shown as cancelled.
+ */
 function getBookings(api: PlaceosApi, type: string, period = todayPeriod()) {
   // No zones/email: staff-api scopes this to the caller. Don't add zones without user=current.
   return api<Booking[]>(
     `/api/staff/v1/bookings?type=${type}&${periodQuery(period)}` +
-      "&include_booked_by=true&include_checked_out=true"
+      "&include_checked_out=true&include_booked_by=true&include_deleted=true"
   );
 }
 
@@ -286,7 +388,7 @@ export async function nextMeetingItem(
       : minutesAway <= 60
         ? { text: `In ${minutesAway} min`, kind: "ok" }
         : undefined;
-  const url = event.online_meeting_url;
+  const url = event.meeting_url || event.online_meeting_url;
   return {
     start: event.event_start,
     title: event.private ? "Private meeting" : event.title || "(No title)",
@@ -299,20 +401,49 @@ export async function nextMeetingItem(
   };
 }
 
-/** Meetings in a PlaceOS room (events whose room matched a PlaceOS system). */
-export function roomItems(events: CalendarEvent[]): TodayItem[] {
-  return events
-    .filter((event) => event.system?.id && event.status !== "cancelled")
-    .map((event) => ({
-      start: event.event_start,
-      title: event.system?.display_name || event.system?.name || "Room",
-      details: [
-        timeRange(event.event_start, event.event_end, isAllDay(event)),
-        event.private ? "Private meeting" : event.title || "",
-      ].filter(Boolean),
-      badge: timingBadge(event.event_start, event.event_end),
-    }))
-    .sort(byStart);
+/**
+ * Whether the room declined, as Workplace's eventStatus: the room resources (attendees flagged resource,
+ * or with the system's email) haven't all accepted and none is still pending. Unlike eventStatus, a room
+ * with no response_status isn't counted as declined.
+ */
+function roomDeclined(event: CalendarEvent): boolean {
+  const email = (event.system?.email || "").toLowerCase();
+  const rooms = (event.attendees ?? []).filter(
+    (a) => a.resource || (!!email && a.email?.toLowerCase() === email)
+  );
+  const status = (a: Attendee) => a.response_status || "";
+  return (
+    rooms.some((a) => status(a) === "declined") &&
+    !rooms.every((a) => ["accepted", "confirmed"].includes(status(a))) &&
+    !rooms.some((a) => ["tentative", "needsAction"].includes(status(a)))
+  );
+}
+
+/**
+ * Meetings in a PlaceOS room (events whose room matched a PlaceOS system), with the room's level and
+ * building as Workplace's event card shows them.
+ */
+export async function roomItems(
+  events: CalendarEvent[],
+  lookups: PlaceosLookups
+): Promise<TodayItem[]> {
+  const items = await Promise.all(
+    events
+      .filter((event) => event.system?.id && event.status !== "cancelled")
+      .map(async (event) => ({
+        start: event.event_start,
+        title: event.system?.display_name || event.system?.name || "Room",
+        details: [
+          timeRange(event.event_start, event.event_end, isAllDay(event)),
+          await lookups.location(event.system?.zones),
+          event.private ? "Private meeting" : event.title || "",
+        ].filter(Boolean),
+        badge: roomDeclined(event)
+          ? { text: "Declined", kind: "error" as const }
+          : timingBadge(event.event_start, event.event_end),
+      }))
+  );
+  return items.sort(byStart);
 }
 
 export async function deskItems(
@@ -322,19 +453,17 @@ export async function deskItems(
 ): Promise<TodayItem[]> {
   const bookings = await getBookings(api, "desk");
   const items = await Promise.all(
-    bookings
-      .filter((booking) => !booking.deleted)
-      .map(async (booking) => ({
-        start: booking.booking_start,
-        title: (await lookups.assetName(booking)) || "Desk",
-        details: [
-          timeRange(booking.booking_start, booking.booking_end, isAllDay(booking)),
-          await lookups.location(booking.zones),
-        ].filter(Boolean),
-        badge: bookingBadge(booking, "Checked in"),
-        actions: bookingActions(api, booking, await settingsFor(booking.zones || []), "desk"),
-        location: await lookups.mapLocation(booking),
-      }))
+    bookings.map(async (booking) => ({
+      start: booking.booking_start,
+      title: (await lookups.assetName(booking)) || "Desk",
+      details: [
+        timeRange(booking.booking_start, booking.booking_end, isAllDayBooking(booking)),
+        await lookups.location(booking.zones),
+      ].filter(Boolean),
+      badge: bookingBadge(booking, "Checked in"),
+      actions: bookingActions(api, booking, await settingsFor(booking.zones || []), "desk"),
+      location: await lookups.mapLocation(booking),
+    }))
   );
   return items.sort(byStart);
 }
@@ -363,18 +492,17 @@ function cancelBooking(api: PlaceosApi, booking: Booking) {
   return api(`/api/staff/v1/bookings/${path}`, { method: "DELETE" });
 }
 
-/** A setting that's on in any of app.<type>, app.<type>s or app.bookings (e.g. app.desk, app.desks). */
+/** A setting that's set in any of app.<type>s, app.<type> or app.bookings (e.g. app.desks, app.desk). */
 const anySetting = (settings: AppSettings | null, type: string, key: string) =>
-  !!settings &&
-  [type, `${type}s`, "bookings"].some(
-    (prefix) => settings.get<boolean>(`${prefix}.${key}`) === true
-  );
+  !!settings && [`${type}s`, type, "bookings"].some((prefix) => !!settings.get(`${prefix}.${key}`));
 
 /**
- * The buttons Workplace's booking details offers (can_checkin, can_cancel). Check in from 15 minutes before
- * the start until the end, unless app.desks.hide_checkin or auto_checkin (app.parking.* for parking) is
- * set, or it's a parking request with no space allocated yet; check out once checked in. Cancel until the
- * booking ends or is checked in.
+ * The buttons Workplace's booking details offers (can_checkin, can_cancel). None once the booking is
+ * cancelled or has ended. Check in from 15 minutes before the start until the end, unless hide_checkin is
+ * set in app.desks/app.desk/app.bookings (app.parkings/app.parking/app.bookings for parking), auto_checkin
+ * is set in app.desk (app.parking), the booking was declined, or it's a parking request with no space
+ * allocated yet; check out once checked in. Cancel until the booking ends or is checked in (declined
+ * bookings too).
  */
 function bookingActions(
   api: PlaceosApi,
@@ -382,25 +510,20 @@ function bookingActions(
   settings: AppSettings | null,
   type: "desk" | "parking"
 ): TodayAction[] {
-  const now = Date.now() / 1000;
-  const state = booking.current_state || "";
-  const cancelled =
-    booking.rejected ||
-    ["cancelled", "declined"].includes(booking.status || "") ||
-    ["cancelled", "rejected"].includes(state);
-  const checkedOut = !!booking.checked_out_at || state === "checked_out";
-  const done = checkedOut || now >= booking.booking_end || state === "ended";
-  if (cancelled || done) {
+  const status = bookingStatus(booking);
+  if (status === "cancelled" || status === "ended") {
     return [];
   }
-  const checkedIn = !!booking.checked_in || state === "checked_in";
+  const now = Date.now() / 1000;
+  const checkedIn = !!booking.checked_in || booking.current_state === "checked_in";
   const actions: TodayAction[] = [];
   const noun = type === "desk" ? "desk" : "parking space";
   const unallocated = type === "parking" && (booking.asset_id || "").startsWith("unallocated");
   const checkinAllowed =
+    status !== "declined" &&
     !unallocated &&
     !anySetting(settings, type, "hide_checkin") &&
-    !anySetting(settings, type, "auto_checkin");
+    !settings?.get(`${type}.auto_checkin`);
   if (checkinAllowed && checkedIn) {
     actions.push({
       label: "Check out",
@@ -431,54 +554,39 @@ export async function parkingItems(
 ): Promise<TodayItem[]> {
   const bookings = await getBookings(api, "parking");
   const items = await Promise.all(
-    bookings
-      .filter((booking) => !booking.deleted)
-      .map(async (booking) => ({
+    bookings.map(async (booking) => {
+      const settings = await settingsFor(booking.zones || []);
+      // app.parking.hide_selected_space: Workplace shows "Parking" and no map instead of the space.
+      const hideSpace = !!settings?.get("parking.hide_selected_space");
+      return {
         start: booking.booking_start,
-        title: (await lookups.assetName(booking)) || "Parking",
+        title: (!hideSpace && (await lookups.assetName(booking))) || "Parking",
         details: [
-          timeRange(booking.booking_start, booking.booking_end, isAllDay(booking)),
+          timeRange(booking.booking_start, booking.booking_end, isAllDayBooking(booking)),
           await lookups.location(booking.zones),
           booking.extension_data?.plate_number
             ? `Plate ${booking.extension_data.plate_number}`
             : "",
         ].filter(Boolean),
         badge: bookingBadge(booking, "Checked in"),
-        actions: bookingActions(api, booking, await settingsFor(booking.zones || []), "parking"),
-        location: await lookups.mapLocation(booking),
-      }))
+        actions: bookingActions(api, booking, settings, "parking"),
+        location: hideSpace ? undefined : await lookups.mapLocation(booking),
+      };
+    })
   );
   return items.sort(byStart);
 }
 
 /**
- * Visitors the user is hosting: visitor bookings (minus those linked to a meeting, which Workplace shows on
- * the meeting) plus guests expected at the user's meetings.
+ * Visitors the user is hosting: guests expected at the user's meetings plus visitor bookings (minus
+ * cancelled ones for a visitor removed from a group, as Workplace's schedule). Workplace shows visitors
+ * linked to a meeting on the meeting; here they are listed unless that meeting's attendees already show
+ * them, because Workplace and Book a room post meeting visitors only as linked bookings (no
+ * visit_expected attendee).
  */
 export async function visitorItems(api: PlaceosApi, events: CalendarEvent[]): Promise<TodayItem[]> {
   const bookings = await getBookings(api, "visitor");
-  const fromBookings: TodayItem[] = bookings
-    .filter((booking) => !booking.deleted && !booking.linked_event)
-    .map((booking) => {
-      const attendee = booking.attendees?.[0];
-      const name =
-        booking.extension_data?.group_members?.[0]?.name ||
-        attendee?.name ||
-        booking.extension_data?.visitor_name ||
-        booking.asset_id ||
-        "Visitor";
-      return {
-        start: booking.booking_start,
-        title: name,
-        details: [
-          timeRange(booking.booking_start, booking.booking_end, isAllDay(booking)),
-          booking.extension_data?.company || attendee?.organisation || "",
-          booking.title || booking.description || "",
-        ].filter(Boolean),
-        badge: booking.checked_in ? { text: "Arrived", kind: "ok" } : undefined,
-      };
-    });
-
+  const shown = new Set<string>();
   const fromMeetings: TodayItem[] = [];
   for (const event of events) {
     if (event.status === "cancelled") {
@@ -486,6 +594,7 @@ export async function visitorItems(api: PlaceosApi, events: CalendarEvent[]): Pr
     }
     for (const attendee of event.attendees ?? []) {
       if (attendee.visit_expected && !attendee.resource && !attendee.organizer) {
+        shown.add(`${attendee.email.toLowerCase()}|${event.event_start}`);
         fromMeetings.push({
           start: event.event_start,
           title: attendee.name || attendee.email,
@@ -499,5 +608,31 @@ export async function visitorItems(api: PlaceosApi, events: CalendarEvent[]): Pr
       }
     }
   }
+
+  const fromBookings: TodayItem[] = bookings
+    .filter(
+      (booking) =>
+        !(
+          booking.linked_event &&
+          shown.has(`${(booking.asset_id || "").toLowerCase()}|${booking.booking_start}`)
+        ) && !(bookingStatus(booking) === "cancelled" && booking.extension_data?.removed_from_group)
+    )
+    .map((booking) => {
+      const attendee = booking.attendees?.[0];
+      const name = visitorName(booking);
+      // The reason, unless it's only the visitor's name (Workplace's visitor_reason).
+      const reason = (booking.title || booking.description || "").trim();
+      return {
+        start: booking.booking_start,
+        title: name,
+        details: [
+          timeRange(booking.booking_start, booking.booking_end, isAllDayBooking(booking)),
+          booking.extension_data?.company || attendee?.organisation || "",
+          reason.toLowerCase() === name.toLowerCase() ? "" : reason,
+        ].filter(Boolean),
+        badge: bookingBadge(booking, "Arrived"),
+      };
+    });
+
   return [...fromBookings, ...fromMeetings].sort(byStart);
 }

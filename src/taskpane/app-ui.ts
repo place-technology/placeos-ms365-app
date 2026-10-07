@@ -322,7 +322,9 @@ const expiryMarginMs = 60 * 1000;
 type PlaceosUser = { id: string; name?: string; email?: string; login_name?: string };
 
 function isUsable(token: PlaceosToken | null): token is PlaceosToken {
-  return !!token && (!token.expiresAt || token.expiresAt - Date.now() > expiryMarginMs);
+  return (
+    !!token && (token.expiresAt === undefined || token.expiresAt - Date.now() > expiryMarginMs)
+  );
 }
 
 /**
@@ -343,20 +345,45 @@ async function refreshWithPlaceos(): Promise<PlaceosToken> {
   return refreshPlaceosToken(placeosToken.refreshToken, addinConfig.placeosClientId);
 }
 
+// The token renewal in progress, shared by every call that needs a token meanwhile (as ts-client shares one
+// token request), so parallel calls don't each refresh or open a Microsoft sign-in.
+let placeosTokenRenewal: Promise<PlaceosToken> | null = null;
+
 /**
  * Returns a usable PlaceOS token: the cached one if not near expiry, else a refresh, else a new Entra exchange.
- * @param forceNew Skip the cached token, e.g. after a 401.
  */
-async function getValidPlaceosToken(forceNew = false): Promise<PlaceosToken> {
-  if (!forceNew && isUsable(placeosToken)) {
-    return placeosToken;
+function getValidPlaceosToken(): Promise<PlaceosToken> {
+  if (isUsable(placeosToken)) {
+    return Promise.resolve(placeosToken);
   }
+  if (!placeosTokenRenewal) {
+    placeosTokenRenewal = renewPlaceosToken().then(
+      (token) => {
+        placeosTokenRenewal = null;
+        return token;
+      },
+      (error) => {
+        placeosTokenRenewal = null;
+        throw error;
+      }
+    );
+  }
+  return placeosTokenRenewal;
+}
+
+async function renewPlaceosToken(): Promise<PlaceosToken> {
   if (placeosToken?.refreshToken) {
     try {
       placeosToken = await refreshWithPlaceos();
       return placeosToken;
     } catch (error) {
       console.warn(`PlaceOS refresh failed, exchanging a new Entra token: ${error}`);
+      // As ts-client: forget the refresh token only if PlaceOS rejected it, not on network or server errors.
+      const rejected =
+        error instanceof PlaceosRequestError && error.status >= 400 && error.status < 500;
+      if (rejected && placeosToken) {
+        placeosToken = { ...placeosToken, refreshToken: undefined };
+      }
     }
   }
   placeosToken = await exchangeWithEntra();
@@ -364,14 +391,26 @@ async function getValidPlaceosToken(forceNew = false): Promise<PlaceosToken> {
 }
 
 /**
+ * Marks the access token as expired after PlaceOS rejected it, keeping its refresh token (ts-client
+ * `invalidateToken`). Does nothing if another call has already replaced it.
+ */
+function invalidatePlaceosToken(accessToken: string) {
+  if (placeosToken?.accessToken === accessToken) {
+    placeosToken = { ...placeosToken, expiresAt: 0 };
+  }
+}
+
+/**
  * Calls PlaceOS with a valid token, retrying once with a new token if PlaceOS returns 401.
  */
 async function placeosApi<T>(path: string, init?: PlaceosRequestInit): Promise<T> {
+  const { accessToken } = await getValidPlaceosToken();
   try {
-    return await placeosFetch<T>(path, (await getValidPlaceosToken()).accessToken, init);
+    return await placeosFetch<T>(path, accessToken, init);
   } catch (error) {
     if (error instanceof PlaceosRequestError && error.status === 401) {
-      return placeosFetch<T>(path, (await getValidPlaceosToken(true)).accessToken, init);
+      invalidatePlaceosToken(accessToken);
+      return placeosFetch<T>(path, (await getValidPlaceosToken()).accessToken, init);
     }
     throw error;
   }
@@ -493,11 +532,15 @@ async function loadToday() {
   }
 }
 
-/** Settings of the building in a booking's zones (for check-in options), or null. */
+/**
+ * Settings of the building in a booking's zones (for check-in options), else of the default building, as
+ * Workplace reads the active building's settings; null if there are none.
+ */
 async function settingsForZones(zones: string[]) {
   try {
     const org = await loadOrganisation(placeosApi);
-    const building = org.buildings.find((b) => zones.includes(b.id));
+    const building =
+      org.buildings.find((b) => zones.includes(b.id)) || (await org.defaultBuilding());
     return building ? await org.settings(building.id) : null;
   } catch {
     return null;
