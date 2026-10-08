@@ -75,20 +75,22 @@ jobs:
             echo ""
             echo "| Artefact | Give to | Deploy in |"
             echo "|---|---|---|"
-            echo "| placeos-outlook-${DOMAIN} | Customer M365 admin | M365 admin center → Integrated apps → Upload custom apps (Office add-in) |"
-            echo "| placeos-app-${DOMAIN} | Customer M365 admin | M365 admin center → Integrated apps, or Teams admin center → Manage apps. Extract the downloaded artefact first; upload the inner .zip |"
+            echo "| placeos-outlook-${DOMAIN}.xml | Customer M365 admin | M365 admin center → Integrated apps → Upload custom apps (Office add-in) |"
+            echo "| placeos-app-${DOMAIN}.zip | Customer M365 admin | M365 admin center → Integrated apps, or Teams admin center → Manage apps. Upload the downloaded .zip as it is; don't extract it |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload add-in manifest
         uses: actions/upload-artifact@v7
         with:
-          name: placeos-outlook-${{ inputs.domain }}
-          path: out/manifest/
+          # Uploaded as-is (not zipped), so the download is the .xml itself, named after the file.
+          path: out/manifest/placeos-outlook-${{ inputs.domain }}.xml
+          archive: false
           if-no-files-found: error
 
       - name: Upload app bar package
         uses: actions/upload-artifact@v7
         with:
-          name: placeos-app-${{ inputs.domain }}
-          path: dist-app/*.zip
+          # Uploaded as-is, so the download is the package itself rather than a zip inside a zip.
+          path: dist-app/placeos-app-${{ inputs.domain }}.zip
+          archive: false
           if-no-files-found: error

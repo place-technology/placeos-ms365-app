@@ -189,6 +189,7 @@ Silent sign-in needs all of the following: admin consent (step 5), an Outlook cl
 |---------|-------|-----|
 | Consent prompt on first use | Admin consent not granted | Step 5 |
 | `AADSTS50011` redirect URI mismatch | SPA redirect URIs missing, wrong domain, or added under Web instead of SPA | Step 4 |
+| `AADSTS700046` Invalid Reply Address, *Reply Address must have scheme `brk-<GUID>://`* | `brk-multihub://<domain>` missing from the SPA platform of the registration whose ID is `client_id`, or it has a scheme, path or trailing slash, or the host doesn't match the domain serving the add-in | Step 4 |
 | `AADSTS65001` consent required | Admin consent not granted for `access_as_user` | Step 5 |
 | `AADSTS500011` resource principal not found | `scope` in `outlook_addin` doesn't match the Application ID URI | Steps 3 and 7 |
 | *This PlaceOS domain is not configured for the Outlook add-in* | `outlook_addin` missing from the authority config | Step 7 |

@@ -50,10 +50,10 @@ Office and Teams manifests need absolute URLs, so each customer domain needs its
 
 | Artefact | Contents | Give to |
 |----------|----------|---------|
-| `placeos-outlook-<domain>` | `placeos-outlook-<domain>.xml`: Outlook add-in manifest | Customer M365 admin |
-| `placeos-app-<domain>` | `placeos-app-<domain>.zip`: Teams / app bar package | Customer M365 admin |
+| `placeos-outlook-<domain>.xml` | Outlook add-in manifest | Customer M365 admin |
+| `placeos-app-<domain>.zip` | Teams / app bar package | Customer M365 admin |
 
-GitHub always downloads artefacts as a zip. For `placeos-app-<domain>`, extract the download and upload the **inner** `placeos-app-<domain>.zip` to Teams or the admin center; uploading the outer zip fails. The run summary lists the add-in URL and where each artefact goes. Artefacts expire after the repository's retention period (90 days by default), so keep a copy of what you send each customer.
+Both are uploaded unzipped, so each downloads as the file itself. Send `placeos-app-<domain>.zip` as it is: Teams and the admin center expect the zip, so don't extract it. Safari unzips downloads by default (Settings → General → "Open 'safe' files after downloading"); if you get a folder instead of the zip, turn that off or download with another browser. The run summary lists the add-in URL and where each artefact goes. Artefacts expire after the repository's retention period (90 days by default), so keep a copy of what you send each customer.
 
 ### By hand
 
