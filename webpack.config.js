@@ -37,6 +37,9 @@ module.exports = async (env, options) => {
     },
     output: {
       clean: true,
+      // PlaceOS serves the add-in without Cache-Control headers, so webviews cache fixed names like taskpane.js
+      // heuristically and keep running old code after a deploy. Hashed names make each build's HTML load new bundles.
+      filename: dev ? "[name].js" : "[name].[contenthash].js",
     },
     resolve: {
       extensions: [".ts", ".html", ".js"],

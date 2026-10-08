@@ -95,6 +95,8 @@ Sign-in, PlaceOS/Staff API calls, UI, styling, theming and the **add-in icons** 
 
 **Customers don't need to do anything.** Users get the new version the next time the add-in or tab loads. Outlook caches icons, so add-in icon changes can take a while to show.
 
+PlaceOS serves the web app without `Cache-Control` headers, so webviews cache files heuristically. Production builds give the JS and CSS content-hashed names, so a fresh `taskpane.html` / `app.html` always loads the new code; only the HTML pages themselves can be served stale from cache for a while (roughly a tenth of their age when they were cached). An open task pane keeps running the old version until it's closed and reopened. To check by hand: close and reopen the pane; in classic Outlook for Windows, clear the Office web add-in cache (`%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\`) if it still shows the old version.
+
 ### When customers need to redeploy
 
 Only when a **package** changes:
