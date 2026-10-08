@@ -102,3 +102,5 @@ The sign-out button is only shown when NAA isn't supported (`NestedAppAuth` 1.1 
 Shared pieces: `msalconfig.ts` (`createMsalConfig`), `msalcommon.ts` (`getTokenRequest`), `util.ts` (`createLocalUrl` resolves page URLs relative to the current page, because production serves the add-in from `https://<customer-domain>/outlook-addin/` while local dev serves from the root). PlaceOS calls (`/auth/…`, `/api/…`) stay absolute paths so they reach the domain root.
 
 Production builds rewrite the manifest's `https://localhost:3000/` to `urlProd`, which is `ADDIN_URL` or `https://placeos-dev.aca.im/outlook-addin/` by default. There is one manifest per customer domain.
+
+PlaceOS serves the files without `Cache-Control`, so webviews cache them. Production bundles have content-hashed names, the Diagnostics view shows `__BUILD_ID__` (commit + build time), and `update-check.ts` (`reloadIfOutdated`, called from `startApp`) re-fetches the page with `no-store` and reloads at `?v=<build>` when its `placeos-build` meta tag is newer.

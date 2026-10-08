@@ -24,6 +24,7 @@ import { loadOrganisation } from "./booking-settings";
 import { initDeskBooking, openDeskBooking } from "./desk-booking-view";
 import { initVisitorBooking, openVisitorBooking } from "./visitor-booking-view";
 import { initRoomBooking, openRoomBooking } from "./room-booking-view";
+import { reloadIfOutdated } from "./update-check";
 import type { MeetingDraft } from "./room-booking-data";
 import {
   checkStaffApi,
@@ -36,6 +37,8 @@ import {
 
 // Set by webpack DefinePlugin: true for development builds only.
 declare const __DEV_TOOLS__: boolean;
+// Set by webpack DefinePlugin: commit hash and time of the build.
+declare const __BUILD_ID__: string;
 
 let accountManager: AccountManager;
 // Whether the host is in a mail context, where the Today view also shows the next meeting.
@@ -61,6 +64,7 @@ const todayRefreshButton = el("todayRefreshButton") as HTMLButtonElement;
 const msAuthStatus = el("msAuthStatus");
 const msAuthPath = el("msAuthPath");
 const configSource = el("configSource");
+const buildInfo = el("buildInfo");
 const msAccount = el("msAccount");
 const tokenSection = el("tokenSection");
 const tokenSummary = el("tokenSummary");
@@ -100,6 +104,8 @@ export async function startApp(
   accountManager = manager;
   showNextMeeting = options.showNextMeeting ?? (() => false);
   sideloadMsg.style.display = "none";
+  buildInfo.innerText = `Build ${__BUILD_ID__}`;
+  reloadIfOutdated(__BUILD_ID__);
   viewToggle.style.display = "";
   viewToggle.addEventListener("click", () =>
     showView(todayView.style.display === "none" ? "today" : "diagnostics")

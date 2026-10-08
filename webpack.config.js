@@ -4,6 +4,7 @@ const devCerts = require("office-addin-dev-certs");
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const webpack = require("webpack");
+const { execSync } = require("child_process");
 
 const urlDev = "https://localhost:3000/";
 // Where the production add-in is served: the customer's PlaceOS domain under /outlook-addin/ (one manifest per customer).
@@ -19,6 +20,18 @@ function mapProxyHost(path) {
   return match && /(^|\.)amazonaws\.com$/i.test(match[1]) ? match[1] : null;
 }
 
+/** Short commit hash of the build, shown on the Diagnostics view to tell which version a client is running. */
+function buildCommit() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7);
+  try {
+    return execSync("git rev-parse --short=7 HEAD", { stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
+  } catch {
+    return "unknown";
+  }
+}
+
 async function getHttpsOptions() {
   const httpsOptions = await devCerts.getHttpsServerOptions();
   return { ca: httpsOptions.ca, key: httpsOptions.key, cert: httpsOptions.cert };
@@ -26,6 +39,9 @@ async function getHttpsOptions() {
 
 module.exports = async (env, options) => {
   const dev = options.mode === "development";
+  const buildId = `${buildCommit()} (${new Date().toISOString().slice(0, 16)}Z)`;
+  // update-check.ts compares this with the build that loaded, to reload pages served stale from cache.
+  const buildMeta = { "placeos-build": buildId };
   const config = {
     devtool: "source-map",
     entry: {
@@ -89,16 +105,19 @@ module.exports = async (env, options) => {
       new webpack.DefinePlugin({
         // Dev-only tooling, e.g. revealing the raw Entra token. Dropped from production builds.
         __DEV_TOOLS__: JSON.stringify(dev),
+        __BUILD_ID__: JSON.stringify(buildId),
       }),
       new HtmlWebpackPlugin({
         filename: "taskpane.html",
         template: "./src/taskpane/taskpane.html",
         chunks: ["polyfill", "taskpane"],
+        meta: buildMeta,
       }),
       new HtmlWebpackPlugin({
         filename: "app.html",
         template: "./src/taskpane/taskpane.html?app",
         chunks: ["polyfill", "app"],
+        meta: buildMeta,
       }),
       new HtmlWebpackPlugin({
         filename: "auth.html",
