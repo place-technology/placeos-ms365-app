@@ -246,7 +246,7 @@ async function loadCard(
   emptyText: string,
   load: () => Promise<TodayItem[]>
 ): Promise<void> {
-  renderMessage(list, "Loading...", "empty");
+  renderMessage(list, "Loading...", "empty loading");
   try {
     renderItems(list, await load(), emptyText, () => loadCard(list, emptyText, load));
   } catch (error) {

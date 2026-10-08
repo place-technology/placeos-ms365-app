@@ -66,6 +66,7 @@ export type DraftDetails = {
   attendees: Person[];
   // The draft repeats (only known on clients with Mailbox 1.7).
   recurring: boolean;
+  recurrenceKnown?: boolean;
 };
 
 /**
@@ -75,6 +76,7 @@ export type DraftDetails = {
 export interface MeetingDraft {
   read(): Promise<DraftDetails>;
   fill(request: BookingRequest): Promise<void>;
+  isCurrent?(): boolean;
 }
 
 export const spaceName = (space: { name: string; display_name?: string }) =>

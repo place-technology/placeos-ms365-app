@@ -196,7 +196,7 @@ export function initVisitorBooking(placeosApi: PlaceosApi, onDone: (booked: bool
 export async function openVisitorBooking() {
   showStep("form");
   show(steps.form, false);
-  setText(status, "Loading...", "detail");
+  setText(status, "Loading...", "detail loading");
   try {
     org = await loadOrganisation(api);
   } catch (error) {

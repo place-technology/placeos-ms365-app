@@ -54,6 +54,7 @@ export function outlookMeetingDraft(): MeetingDraft | null {
   };
 
   return {
+    isCurrent: () => Office.context.mailbox.item === item,
     async read(): Promise<DraftDetails> {
       const [title, start, end, people, recurrence] = await Promise.all([
         officeAsync<string>((cb) => draft.subject.getAsync(cb)),
@@ -62,9 +63,9 @@ export function outlookMeetingDraft(): MeetingDraft | null {
         attendees(),
         supports("1.7")
           ? officeAsync<Office.Recurrence | null>((cb) => draft.recurrence.getAsync(cb)).catch(
-              () => null
+              () => undefined
             )
-          : Promise.resolve(null),
+          : Promise.resolve(undefined),
       ]);
       return {
         title: title || "",
@@ -72,6 +73,7 @@ export function outlookMeetingDraft(): MeetingDraft | null {
         end: end.getTime(),
         attendees: people,
         recurring: !!recurrence?.recurrenceType,
+        recurrenceKnown: supports("1.7") && recurrence !== undefined,
       };
     },
 

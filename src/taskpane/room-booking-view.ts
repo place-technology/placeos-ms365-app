@@ -44,6 +44,9 @@ import {
   type MapRoomStatus,
 } from "./floor-map";
 import type { PlaceosApi } from "./placeos-data";
+import { resultCard, selectedResult } from "./result-card";
+import type { FavouriteRoom } from "./favourite-rooms";
+import { favouriteRoomRequest } from "./favourite-room-request";
 import { PlaceosRequestError } from "./placeos-helper";
 import {
   allDayAllowed,
@@ -108,6 +111,7 @@ let buildingId = "";
 // The Outlook meeting being composed, if any: the room is added to it instead of PlaceOS booking it.
 let getDraft: () => MeetingDraft | null = () => null;
 let draft: MeetingDraft | null = null;
+let favouriteShortcut = false;
 
 // Form state.
 let attendees: Person[] = [];
@@ -250,7 +254,13 @@ export function initRoomBooking(
   el("bookMapZoomOut").addEventListener("click", () => floorMap?.zoomBy(1 / 1.5));
   el("bookMapReset").addEventListener("click", () => floorMap?.reset());
 
-  el("bookOtherRoom").addEventListener("click", () => showStep("rooms"));
+  el("bookOtherRoom").addEventListener("click", () => {
+    if (favouriteShortcut) {
+      openRoomBooking();
+    } else {
+      showStep("rooms");
+    }
+  });
   el("bookSubmitButton").addEventListener("click", () => submit());
   el("bookAnywayButton").addEventListener("click", () => {
     acceptClashes = true;
@@ -268,12 +278,17 @@ export function initRoomBooking(
 }
 
 /** Opens the view at the details form. Loads the org and settings the first time. */
-export async function openRoomBooking() {
+export async function openRoomBooking(favourite?: FavouriteRoom) {
+  favouriteShortcut = !!favourite;
   showStep("form");
   show(steps.form, false);
-  setText(status, "Loading...", "detail");
+  setText(status, "Loading...", "detail loading");
   draft = getDraft();
   showDraftMode();
+  if (favourite && !draft) {
+    setText(status, "Open an editable Outlook meeting to add a favourite room.", "detail error");
+    return;
+  }
   let details: DraftDetails | null = null;
   try {
     details = draft ? await draft.read() : null;
@@ -302,8 +317,28 @@ export async function openRoomBooking() {
     org.buildings.forEach((building) => option(buildings, building.id, zoneLabel(building)));
   }
   show(el("bookBuildingField"), org.buildings.length > 1);
-  const building = buildingId || (await org.defaultBuilding())?.id || org.buildings[0].id;
+  const building =
+    favourite?.buildingId || buildingId || (await org.defaultBuilding())?.id || org.buildings[0].id;
   await changeBuilding(building);
+  if (favourite && details) {
+    try {
+      request = await favouriteRoomRequest(api, org, settings, favourite, details);
+      if (draft?.isCurrent?.() === false) {
+        throw new Error("The Outlook meeting changed. Go back and refresh your favourites.");
+      }
+      setText(status, "");
+      setText(
+        el("bookDraftNote"),
+        "Review your favourite room, then add it to the open meeting. Send the invitation to book it.",
+        "detail"
+      );
+      chooseRoom(request.room);
+      el("bookSubmitButton").focus();
+    } catch (error) {
+      setText(status, describeError(error), "detail error");
+    }
+    return;
+  }
   if (details) {
     // Start from the draft each time, as it may have changed in Outlook.
     prefillFromDraft(details);
@@ -805,7 +840,7 @@ async function findRooms() {
   request = { ...form, room: null as unknown as Space };
   const button = el<HTMLButtonElement>("bookFindButton");
   button.disabled = true;
-  setText(el("bookFormError"), "Finding available rooms...", "detail");
+  setText(el("bookFormError"), "Finding available rooms...", "detail loading");
   try {
     const zoneId = settings.get<boolean>("use_region")
       ? org?.buildings.find((b) => b.id === buildingId)?.parent_id || buildingId
@@ -945,25 +980,16 @@ function renderRooms() {
   const favourites = org?.favouriteSpaces || [];
   for (const space of rooms) {
     const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "room";
-    const title = document.createElement("div");
-    title.className = "item-title";
-    title.textContent = `${favourites.includes(space.id) ? "★ " : ""}${spaceName(space)}`;
-    button.appendChild(title);
-    const details = [
-      roomLocation(space),
-      (space.capacity ?? -1) > 0 ? `Seats ${space.capacity}` : "",
-      spaceFeatures(space).slice(0, 4).join(", "),
-    ].filter(Boolean);
-    for (const line of details) {
-      const detail = document.createElement("div");
-      detail.className = "item-detail";
-      detail.textContent = line;
-      button.appendChild(detail);
-    }
-    button.addEventListener("click", () => chooseRoom(space));
+    const button = resultCard({
+      name: `${favourites.includes(space.id) ? "★ " : ""}${spaceName(space)}`,
+      details: [
+        roomLocation(space),
+        (space.capacity ?? -1) > 0 ? `Seats ${space.capacity}` : "",
+        spaceFeatures(space).slice(0, 4).join(", "),
+      ],
+      action: "Choose room →",
+      onChoose: () => chooseRoom(space),
+    });
     item.appendChild(button);
     list.appendChild(item);
   }
@@ -1089,7 +1115,7 @@ async function renderMap() {
   }
   const seq = ++mapLoadSeq;
   if (shownMapUrl !== level.map_id) {
-    setText(mapStatus, "Loading the floor plan...", "detail");
+    setText(mapStatus, "Loading the floor plan...", "detail loading");
     try {
       const svg = await loadMapSvg(level.map_id, api);
       if (seq !== mapLoadSeq) {
@@ -1207,6 +1233,7 @@ function renderMapSelection() {
     return;
   }
   const favourite = org?.favouriteSpaces.includes(space.id);
+  selectedResult(card, "Selected room");
   line(card, `${favourite ? "★ " : ""}${spaceName(space)}`, "item-title");
   line(card, roomLocation(space));
   line(card, (space.capacity ?? -1) > 0 ? `Seats ${space.capacity}` : "");
@@ -1262,6 +1289,7 @@ function chooseRoom(space: Space) {
 
   const details = el("bookRoomDetails");
   details.textContent = "";
+  selectedResult(details, "Selected room");
   if (space.images?.[0] && /^https:\/\//.test(space.images[0])) {
     const image = document.createElement("img");
     image.className = "room-image";
@@ -1352,7 +1380,7 @@ async function loadCatering(space: Space) {
   const seq = ++cateringSeq;
   const { start, duration } = request;
   show(section, true);
-  setText(el("bookCateringStatus"), "Loading the menu...", "detail");
+  setText(el("bookCateringStatus"), "Loading the menu...", "detail loading");
   try {
     const zoneId = roomBuildingId(space);
     const building = org.buildings.find((b) => b.id === buildingId) as
@@ -1821,7 +1849,24 @@ async function submit() {
       throw new Error("This room has just been booked by someone else. Choose another room.");
     }
     if (draft) {
-      await draft.fill(request);
+      let draftRequest = request;
+      if (favouriteShortcut) {
+        const latest = await draft.read();
+        if (
+          draft.isCurrent?.() === false ||
+          latest.start <= Date.now() ||
+          latest.recurring ||
+          latest.recurrenceKnown === false ||
+          latest.start !== request.start ||
+          latest.end !== request.start + request.duration * minute
+        ) {
+          throw new Error(
+            "The Outlook meeting changed. Go back to today and refresh your favourites before adding a room."
+          );
+        }
+        draftRequest = { ...request, title: latest.title, attendees: latest.attendees };
+      }
+      await draft.fill(draftRequest);
       showDone(0, 0);
       return;
     }

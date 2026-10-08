@@ -19,6 +19,7 @@ import { checkAccessTokenClaims, decodeAccessTokenClaims } from "./token-inspect
 import { renderRawTokenDevOnly } from "./dev-raw-token";
 import { holdTokenForExpiryTest, renderFailureTestsDevOnly } from "./dev-failure-tests";
 import { loadTodayOverview } from "./today-view";
+import { favouriteRoomsView } from "./favourite-rooms";
 import { loadOrganisation } from "./booking-settings";
 import { initDeskBooking, openDeskBooking } from "./desk-booking-view";
 import { initVisitorBooking, openVisitorBooking } from "./visitor-booking-view";
@@ -39,6 +40,7 @@ declare const __DEV_TOOLS__: boolean;
 let accountManager: AccountManager;
 // Whether the host is in a mail context, where the Today view also shows the next meeting.
 let showNextMeeting: () => boolean = () => false;
+let favourites: ReturnType<typeof favouriteRoomsView> | undefined;
 // Per-domain auth config, discovered from the PlaceOS domain on load.
 let addinConfig: AddinConfig;
 
@@ -92,6 +94,7 @@ export async function startApp(
     showNextMeeting?: () => boolean;
     // The meeting being composed in the host, which Book a room fills in instead of booking through PlaceOS.
     meetingDraft?: () => MeetingDraft | null;
+    onMeetingChanged?: (listener: () => void) => void;
   } = {}
 ) {
   accountManager = manager;
@@ -105,6 +108,18 @@ export async function startApp(
   updateGreeting();
   todaySignInButton.addEventListener("click", signInAndExchange);
   todayRefreshButton.addEventListener("click", loadToday);
+  favourites = favouriteRoomsView(placeosApi, options.meetingDraft ?? (() => null), (room) => {
+    showView("book");
+    openRoomBooking(room);
+  });
+  options.onMeetingChanged?.(() => {
+    el("bookRoomActionLabel").textContent = options.meetingDraft?.()
+      ? "Add a room to this meeting"
+      : "Book a room";
+    if (placeosToken && todayView.style.display !== "none") {
+      favourites?.refresh();
+    }
+  });
   initRoomBooking(
     placeosApi,
     (booked) => {
@@ -116,7 +131,7 @@ export async function startApp(
     options.meetingDraft
   );
   if (options.meetingDraft?.()) {
-    el("bookRoomButton").textContent = "Add a room to this meeting";
+    el("bookRoomActionLabel").textContent = "Add a room to this meeting";
   }
   el("bookRoomButton").addEventListener("click", () => {
     showView("book");
@@ -509,6 +524,7 @@ async function loadToday() {
   todayRefreshButton.disabled = true;
   setText(todayStatus, "Loading your day...");
   updateGreeting();
+  favourites?.refresh();
   try {
     await loadTodayOverview(
       placeosApi,
@@ -556,6 +572,9 @@ function showView(view: View) {
   visitorView.style.display = view === "visitor" ? "flex" : "none";
   appBody.style.display = view === "diagnostics" ? "flex" : "none";
   viewToggle.textContent = view === "today" ? "Diagnostics" : "Back to today";
+  if (view === "today" && placeosToken) {
+    favourites?.refresh();
+  }
   // The diagnostics data checks only run when someone looks at them.
   if (view === "diagnostics" && placeosToken && dataSection.style.display === "none") {
     loadPlaceosData();

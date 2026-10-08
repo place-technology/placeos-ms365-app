@@ -16,11 +16,10 @@
   </head>
 
   <body>
-    <header class="header">
-      <h1>PlaceOS</h1>
+    <nav class="view-navigation" aria-label="View navigation">
       <!-- Switches between the user-facing Today view and the Diagnostics view (#diagnostics opens it directly). -->
       <button id="viewToggle" class="link" style="display: none">Diagnostics</button>
-    </header>
+    </nav>
     <section id="sideload-msg" class="main">
       <p>Open PlaceOS from Outlook or Teams.</p>
     </section>
@@ -30,7 +29,7 @@
         <p id="todayGreeting" class="greeting">Hello</p>
         <p id="todayDate" class="detail"></p>
       </section>
-      <p id="todayStatus" class="detail">Signing you in...</p>
+      <p id="todayStatus" class="detail" role="status">Signing you in...</p>
       <button id="todaySignInButton" style="display: none">Sign in</button>
       <!-- Only in the mail context: the user's next calendar event, room or not. -->
       <section id="nextMeeting" class="card next-meeting" style="display: none">
@@ -38,25 +37,66 @@
         <ul id="nextMeetingList" class="items"></ul>
       </section>
       <div id="todayCards" class="cards" style="display: none">
+        <nav class="launcher" aria-label="Workplace services">
+          <button id="bookRoomButton" class="launcher-tile" type="button">
+            <svg class="launcher-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 21V3h12v18M2 21h20M16 7h4v14M11 12h1" />
+            </svg>
+            <span class="launcher-label">Rooms</span>
+            <span id="bookRoomActionLabel" class="launcher-detail">Book a room</span>
+          </button>
+          <button id="bookDeskButton" class="launcher-tile" type="button">
+            <svg class="launcher-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M3 11h18M5 11v10M19 11v10M8 3h8v5H8zM12 8v3" />
+            </svg>
+            <span class="launcher-label">Desks</span>
+            <span class="launcher-detail">Book a desk</span>
+          </button>
+          <button id="bookParkingButton" class="launcher-tile" type="button">
+            <svg class="launcher-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <rect x="3" y="3" width="18" height="18" rx="3" />
+              <path d="M10 17V7h3a3 3 0 0 1 0 6h-3" />
+            </svg>
+            <span class="launcher-label">Parking</span>
+            <span class="launcher-detail">Book parking</span>
+          </button>
+          <button id="inviteVisitorButton" class="launcher-tile" type="button">
+            <svg class="launcher-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="9" cy="7" r="3" />
+              <path d="M3 21v-3a6 6 0 0 1 12 0v3M18 8v6M15 11h6" />
+            </svg>
+            <span class="launcher-label">Visitors</span>
+            <span class="launcher-detail">Invite a visitor</span>
+          </button>
+        </nav>
+        <section
+          id="favouriteRooms"
+          class="favourite-rooms"
+          aria-labelledby="favouriteRoomsHeading"
+        >
+          <div class="favourites-heading">
+            <h2 id="favouriteRoomsHeading" class="bookings-heading">Your Favourites</h2>
+            <button id="refreshFavourites" class="link" type="button">Refresh</button>
+          </div>
+          <p id="favouriteRoomsStatus" class="detail" role="status"></p>
+          <ul id="favouriteRoomsList" class="items favourite-list"></ul>
+        </section>
+        <h2 class="bookings-heading">Your Bookings</h2>
         <section class="card">
           <h2>Rooms</h2>
           <ul id="todayRooms" class="items"></ul>
-          <button id="bookRoomButton" class="secondary card-action">Book a room</button>
         </section>
         <section class="card">
           <h2>Desks</h2>
           <ul id="todayDesks" class="items"></ul>
-          <button id="bookDeskButton" class="secondary card-action">Book a desk</button>
         </section>
         <section class="card">
           <h2>Parking</h2>
           <ul id="todayParking" class="items"></ul>
-          <button id="bookParkingButton" class="secondary card-action">Book parking</button>
         </section>
         <section class="card">
           <h2>Visitors</h2>
           <ul id="todayVisitors" class="items"></ul>
-          <button id="inviteVisitorButton" class="secondary card-action">Invite a visitor</button>
         </section>
         <button id="todayRefreshButton" class="secondary">Refresh</button>
       </div>
@@ -68,7 +108,7 @@
         <p id="bookHeading" class="greeting">Book a room</p>
         <p id="bookSubtitle" class="detail"></p>
       </section>
-      <p id="bookStatus" class="detail"></p>
+      <p id="bookStatus" class="detail" role="status"></p>
       <p id="bookDraftNote" class="detail" style="display: none"></p>
 
       <form id="bookForm" class="form" style="display: none" novalidate>
@@ -137,7 +177,7 @@
           <span>Notes</span>
           <textarea id="bookNotes" rows="3" placeholder="Information for attendees"></textarea>
         </label>
-        <p id="bookFormError" class="error"></p>
+        <p id="bookFormError" class="error" role="status"></p>
         <div class="buttons">
           <button id="bookFindButton" type="submit">Find room</button>
           <button id="bookClearButton" type="button" class="secondary">Clear form</button>
@@ -303,7 +343,7 @@
         <p id="deskTitle" class="greeting">Book a desk</p>
         <p id="deskSubtitle" class="detail"></p>
       </section>
-      <p id="deskStatus" class="detail"></p>
+      <p id="deskStatus" class="detail" role="status"></p>
       <label id="deskBuildingField" class="form-field" style="display: none">
         <span>Building</span>
         <select id="deskBuilding"></select>
@@ -367,7 +407,7 @@
           <span>Plate number</span>
           <input id="deskPlate" type="text" autocomplete="off" maxlength="20" />
         </label>
-        <p id="deskFormError" class="error"></p>
+        <p id="deskFormError" class="error" role="status"></p>
         <div class="buttons">
           <button id="deskFindButton" type="submit">Find desk</button>
           <button id="deskCancelButton" type="button" class="secondary">Cancel</button>
@@ -441,7 +481,7 @@
         <p class="greeting">Invite a visitor</p>
         <p id="visitorSubtitle" class="detail"></p>
       </section>
-      <p id="visitorStatus" class="detail"></p>
+      <p id="visitorStatus" class="detail" role="status"></p>
 
       <form id="visitorForm" class="form" style="display: none" novalidate>
         <label id="visitorBuildingField" class="form-field">
@@ -493,7 +533,7 @@
             ><input id="visitorInternational" type="checkbox" /> International visitor</label
           >
         </div>
-        <p id="visitorFormError" class="error"></p>
+        <p id="visitorFormError" class="error" role="status"></p>
         <div class="buttons">
           <button id="visitorSendButton" type="submit">Send invite</button>
           <button id="visitorCancelButton" type="button" class="secondary">Cancel</button>

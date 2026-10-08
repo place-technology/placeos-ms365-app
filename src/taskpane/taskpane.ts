@@ -35,5 +35,33 @@ Office.onReady((info) => {
     },
     // Composing a meeting: Book a room adds the room to it.
     meetingDraft: outlookMeetingDraft,
+    onMeetingChanged: (listener) => {
+      const watched = new WeakSet<object>();
+      const watchItem = () => {
+        const item = Office.context.mailbox.item;
+        if (!item || watched.has(item) || !outlookMeetingDraft()) return;
+        watched.add(item);
+        if (Office.context.requirements.isSetSupported("Mailbox", "1.7")) {
+          for (const event of [
+            Office.EventType.AppointmentTimeChanged,
+            Office.EventType.RecurrenceChanged,
+            Office.EventType.RecipientsChanged,
+          ]) {
+            item.addHandlerAsync(event, listener, () => undefined);
+          }
+        }
+      };
+      watchItem();
+      if (Office.context.requirements.isSetSupported("Mailbox", "1.5")) {
+        Office.context.mailbox.addHandlerAsync(
+          Office.EventType.ItemChanged,
+          () => {
+            watchItem();
+            listener();
+          },
+          () => undefined
+        );
+      }
+    },
   });
 });

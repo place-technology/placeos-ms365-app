@@ -43,6 +43,7 @@ import {
   type MapRoomStatus,
 } from "./floor-map";
 import type { PlaceosApi } from "./placeos-data";
+import { resultCard, selectedResult } from "./result-card";
 import { PlaceosRequestError } from "./placeos-helper";
 import { allDayPeriod, checkBookableHours, dateValue, isFullDay } from "./room-booking-data";
 
@@ -255,7 +256,7 @@ export async function openDeskBooking(newKind: ResourceKind = "desk") {
   applyLabels();
   showStep("form");
   show(steps.form, false);
-  setText(status, "Loading...", "detail");
+  setText(status, "Loading...", "detail loading");
   deskCache = new Map();
   try {
     org = await loadOrganisation(api);
@@ -570,7 +571,7 @@ async function findDesks() {
   request = form;
   const button = el<HTMLButtonElement>("deskFindButton");
   button.disabled = true;
-  setText(el("deskFormError"), `Finding free ${nouns()}...`, "detail");
+  setText(el("deskFormError"), `Finding free ${nouns()}...`, "detail loading");
   try {
     const { zoneId, buildingIds } = searchScope();
     const [desks, rules] = await Promise.all([
@@ -705,13 +706,12 @@ function renderDesks() {
   }
   for (const desk of desks) {
     const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "room";
-    line(button, desk.name, "item-title");
-    line(button, deskLocation(desk));
-    line(button, desk.features.slice(0, 4).join(", "));
-    button.addEventListener("click", () => chooseDesk(desk));
+    const button = resultCard({
+      name: desk.name,
+      details: [deskLocation(desk), desk.features.slice(0, 4).join(", ")],
+      action: `Choose ${noun()} →`,
+      onChoose: () => chooseDesk(desk),
+    });
     item.appendChild(button);
     list.appendChild(item);
   }
@@ -835,7 +835,7 @@ async function renderMap() {
   }
   const seq = ++mapLoadSeq;
   if (shownMapUrl !== level.map_id) {
-    setText(mapStatus, "Loading the floor plan...", "detail");
+    setText(mapStatus, "Loading the floor plan...", "detail loading");
     try {
       const svg = await loadMapSvg(level.map_id, api);
       if (seq !== mapLoadSeq) {
@@ -950,6 +950,7 @@ function renderMapSelection() {
   if (!desk) {
     return;
   }
+  selectedResult(card, `Selected ${noun()}`);
   line(card, desk.name, "item-title");
   line(card, deskLocation(desk));
   line(card, desk.features.slice(0, 6).join(", "));
@@ -1006,7 +1007,7 @@ async function showAssignedMap() {
   const mapStatus = el("deskAssignedMapStatus");
   show(el("deskAssignedMap"), true);
   show(el("deskAssignedMapButton"), false);
-  setText(mapStatus, "Loading the floor plan...", "detail");
+  setText(mapStatus, "Loading the floor plan...", "detail loading");
   try {
     assignedMap.show(await loadMapSvg(url, api));
   } catch (error) {
@@ -1054,6 +1055,7 @@ function chooseDesk(desk: Desk) {
   chosen = desk;
   const details = el("deskDetails");
   details.textContent = "";
+  selectedResult(details, `Selected ${noun()}`);
   line(details, desk.name, "item-title");
   line(details, deskLocation(desk));
   line(details, desk.features.join(", "));
