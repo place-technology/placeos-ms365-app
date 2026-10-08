@@ -117,6 +117,8 @@ let candidates: Space[] = [];
 let searchedRooms: Space[] = [];
 let searchedBuildingIds: string[] = [];
 let roomView: "list" | "map" = "list";
+// Set once the user picks List, so later searches don't switch back to the map.
+let listChosen = false;
 let floorMap: FloorMap | null = null;
 let mapLevels: Zone[] = [];
 // map_id of the floor plan on screen, and the request for the one loading.
@@ -230,8 +232,14 @@ export function initRoomBooking(
   for (const id of ["bookLevel", "bookCapacity", "bookFavourites"]) {
     el(id).addEventListener("change", renderRooms);
   }
-  el("bookListViewButton").addEventListener("click", () => setRoomView("list"));
-  el("bookMapViewButton").addEventListener("click", () => setRoomView("map"));
+  el("bookListViewButton").addEventListener("click", () => {
+    listChosen = true;
+    setRoomView("list");
+  });
+  el("bookMapViewButton").addEventListener("click", () => {
+    listChosen = false;
+    setRoomView("map");
+  });
   select("bookMapLevel").addEventListener("change", () => {
     mapSelection = null;
     renderMap();
@@ -965,7 +973,7 @@ function renderRooms() {
 // Rooms map (legacy interactive-map): one level's floor plan, free rooms coloured and tappable
 // ---------------------------------------------------------------------------------------------------------
 
-function setRoomView(view: "list" | "map") {
+function setRoomView(view: "list" | "map", render = true) {
   roomView = view;
   const list = view === "list";
   for (const [id, pressed] of [
@@ -982,10 +990,15 @@ function setRoomView(view: "list" | "map") {
   if (!list) {
     chooseDefaultMapLevel();
   }
-  renderRooms();
+  if (render) {
+    renderRooms();
+  }
 }
 
-/** Fills the map's level picker with the searched buildings' levels that have a floor plan. */
+/**
+ * Fills the map's level picker with the searched buildings' levels that have a floor plan.
+ * Opens the map view when there is one, unless the user picked List.
+ */
 function prepareMapLevels() {
   if (!org) {
     return;
@@ -999,7 +1012,9 @@ function prepareMapLevels() {
   updateMapLevelLabels();
   show(el("bookViewToggle"), mapLevels.length > 0);
   if (!mapLevels.length && roomView === "map") {
-    setRoomView("list");
+    setRoomView("list", false);
+  } else if (mapLevels.length && roomView === "list" && !listChosen) {
+    setRoomView("map", false);
   } else if (roomView === "map" && !picker.value) {
     chooseDefaultMapLevel();
   }

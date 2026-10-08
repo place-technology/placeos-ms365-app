@@ -33,7 +33,7 @@ Desk bookings on the Today view have **Check in**, **Check out** and **Cancel** 
 * Auto-allocation (`desks.auto_allocation`), the nearby-desk preselect, and favourite desks.
 * Lockers (`desks.can_book_lockers`), assets with a desk (`desks.allow_assets`) and payments.
 * Custom duration options (`custom_duration_options`).
-* `desks.allow_time_changes: false` (Workplace then hides the time fields and the all-day option), `desks.hide_map` and `desks.default_select_as_map`.
+* `desks.allow_time_changes: false` (Workplace then hides the time fields and the all-day option), `desks.hide_map` and `desks.default_select_as_map`. The add-in always opens on the map when a level has a floor plan, for desks and parking, until the user picks List.
 
 ## Parking
 

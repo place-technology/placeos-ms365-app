@@ -83,6 +83,8 @@ let searchedDesks: Desk[] = [];
 let bookedIds = new Set<string>();
 let candidates: Desk[] = [];
 let deskView: "list" | "map" = "list";
+// Set once the user picks List, so later searches don't switch back to the map.
+let listChosen = false;
 let floorMap: FloorMap | null = null;
 let mapLevels: Zone[] = [];
 let shownMapUrl = "";
@@ -209,8 +211,14 @@ export function initDeskBooking(placeosApi: PlaceosApi, onDone: (booked: boolean
   );
   el("deskBackToForm").addEventListener("click", () => showStep("form"));
   select("deskLevel").addEventListener("change", renderDesks);
-  el("deskListViewButton").addEventListener("click", () => setDeskView("list"));
-  el("deskMapViewButton").addEventListener("click", () => setDeskView("map"));
+  el("deskListViewButton").addEventListener("click", () => {
+    listChosen = true;
+    setDeskView("list");
+  });
+  el("deskMapViewButton").addEventListener("click", () => {
+    listChosen = false;
+    setDeskView("map");
+  });
   select("deskMapLevel").addEventListener("change", () => {
     mapSelection = null;
     renderMap();
@@ -713,7 +721,7 @@ function renderDesks() {
 // Map: one level's floor plan, free desks or spaces coloured and tappable
 // ---------------------------------------------------------------------------------------------------------
 
-function setDeskView(view: "list" | "map") {
+function setDeskView(view: "list" | "map", render = true) {
   deskView = view;
   const list = view === "list";
   for (const [id, pressed] of [
@@ -730,10 +738,15 @@ function setDeskView(view: "list" | "map") {
   if (!list) {
     chooseDefaultMapLevel();
   }
-  renderDesks();
+  if (render) {
+    renderDesks();
+  }
 }
 
-/** Fills the map's level picker with levels that have a floor plan and desks or spaces. */
+/**
+ * Fills the map's level picker with levels that have a floor plan and desks or spaces.
+ * Opens the map view when there is one, unless the user picked List.
+ */
 function prepareMapLevels(buildingIds: string[]) {
   if (!org) {
     return;
@@ -748,7 +761,9 @@ function prepareMapLevels(buildingIds: string[]) {
   updateMapLevelLabels(buildingIds);
   show(el("deskViewToggle"), mapLevels.length > 0);
   if (!mapLevels.length && deskView === "map") {
-    setDeskView("list");
+    setDeskView("list", false);
+  } else if (mapLevels.length && deskView === "list" && !listChosen) {
+    setDeskView("map", false);
   } else if (deskView === "map" && !picker.value) {
     chooseDefaultMapLevel();
   }
