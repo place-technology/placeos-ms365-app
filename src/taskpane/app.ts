@@ -35,6 +35,7 @@ async function start() {
   startApp(accountManager, hostNames[context.app.host.name] ?? `${context.app.host.name} app`, {
     // Full-page app with no item context: always show the next meeting.
     showNextMeeting: () => true,
+    favouriteRoomsForNow: true,
   });
 }
 

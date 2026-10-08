@@ -11,13 +11,28 @@ import {
   type DraftDetails,
 } from "./room-booking-data";
 
+export function favouriteNowDetails(settings: AppSettings): DraftDetails {
+  const start = Date.now();
+  const duration = settings.get<number>("events.min_duration", 30) || 30;
+  return {
+    title: "Room booking",
+    start,
+    end: start + duration * 60000,
+    attendees: [],
+    recurring: false,
+  };
+}
+
 export async function favouriteRoomRequest(
   api: PlaceosApi,
   org: Organisation,
   settings: AppSettings,
   favourite: FavouriteRoom,
-  details: DraftDetails
+  details: DraftDetails | null
 ): Promise<BookingRequest> {
+  const bookNow = favourite.bookNow === true && !details;
+  if (bookNow) details = favouriteNowDetails(settings);
+  if (!details) throw new Error("Open an editable Outlook meeting to add a favourite room.");
   const building = org.buildings.find((entry) => entry.id === favourite.buildingId);
   const duration = (details.end - details.start) / 60000;
   const min = settings.get<number>("events.min_duration", 30) || 30;
@@ -36,7 +51,7 @@ export async function favouriteRoomRequest(
   if (
     !Number.isFinite(details.start) ||
     !Number.isFinite(duration) ||
-    details.start <= Date.now() ||
+    (!bookNow && details.start <= Date.now()) ||
     duration < min ||
     duration > max ||
     details.start > Date.now() + maxDays * 86400000

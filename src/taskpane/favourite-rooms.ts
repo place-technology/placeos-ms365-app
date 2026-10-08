@@ -2,6 +2,7 @@
 
 import { loadOrganisation, zoneLabel } from "./booking-settings";
 import type { PlaceosApi } from "./placeos-data";
+import { favouriteNowDetails } from "./favourite-room-request";
 import {
   checkBookableHours,
   getAvailableSpaceIds,
@@ -12,12 +13,13 @@ import {
   type MeetingDraft,
 } from "./room-booking-data";
 
-export type FavouriteRoom = { id: string; buildingId: string };
+export type FavouriteRoom = { id: string; buildingId: string; bookNow?: boolean };
 
 export function favouriteRoomsView(
   api: PlaceosApi,
   getDraft: () => MeetingDraft | null,
-  choose: (room: FavouriteRoom) => void
+  choose: (room: FavouriteRoom) => void,
+  forNow = false
 ) {
   const status = document.getElementById("favouriteRoomsStatus") as HTMLElement;
   const list = document.getElementById("favouriteRoomsList") as HTMLElement;
@@ -42,6 +44,9 @@ export function favouriteRoomsView(
         Number.isFinite(duration) &&
         details.start > Date.now() &&
         duration > 0;
+      const calendarDetails = details;
+      const calendarDuration = duration;
+      const calendarValidTime = validTime;
       const rooms = favourites.size
         ? (
             await Promise.all(
@@ -51,6 +56,12 @@ export function favouriteRoomsView(
                 );
                 if (!spaces.length) return [];
                 const settings = await org.settings(building.id);
+                const nowDetails = forNow && !draft ? favouriteNowDetails(settings) : null;
+                const details = nowDetails ?? calendarDetails;
+                const duration = nowDetails
+                  ? (nowDetails.end - nowDetails.start) / 60000
+                  : calendarDuration;
+                const validTime = !!nowDetails || calendarValidTime;
                 const rules = details && validTime ? await getBookingRules(api, building.id) : [];
                 const allowed = spaces.filter(
                   (space) =>
@@ -119,7 +130,7 @@ export function favouriteRoomsView(
                                 : available.has(room.id)
                                   ? "Available"
                                   : "Unavailable";
-                  return { room, building, state };
+                  return { room, building, state, nowDuration: nowDetails ? duration : null };
                 });
               })
             )
@@ -132,19 +143,23 @@ export function favouriteRoomsView(
       }
       status.className = "detail";
       status.textContent =
-        details && validTime
-          ? `${new Date(details.start).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })} – ${new Date(details.end).toLocaleString([], { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}. Availability is checked again before adding.`
-          : "Open an editable Outlook calendar event to check availability and add a room.";
+        forNow && !draft
+          ? "Availability from now. Review the booking before confirming; availability is checked again."
+          : details && validTime
+            ? `${new Date(details.start).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })} – ${new Date(details.end).toLocaleString([], { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}. Availability is checked again before adding.`
+            : "Open an editable Outlook calendar event to check availability and add a room.";
       if (!rooms.length) {
         const empty = document.createElement("li");
         empty.className = "empty";
         empty.textContent = favourites.size
-          ? "No favourite rooms are available to show for this meeting."
+          ? forNow && !draft
+            ? "No favourite rooms are available to show for now."
+            : "No favourite rooms are available to show for this meeting."
           : "No favourite rooms saved in PlaceOS yet.";
         list.appendChild(empty);
       }
       const seen = new Set<string>();
-      for (const { room, building, state } of rooms) {
+      for (const { room, building, state, nowDuration } of rooms) {
         if (seen.has(room.id)) continue;
         seen.add(room.id);
         const item = document.createElement("li");
@@ -157,6 +172,7 @@ export function favouriteRoomsView(
         location.textContent = [level ? zoneLabel(level) : "", zoneLabel(building)]
           .filter(Boolean)
           .join(", ");
+        if (nowDuration) location.textContent += ` · Now · ${nowDuration} min`;
         const footer = document.createElement("div");
         footer.className = "result-footer";
         const indicator = document.createElement("span");
@@ -167,9 +183,14 @@ export function favouriteRoomsView(
           const button = document.createElement("button");
           button.type = "button";
           button.className = "link";
-          button.textContent = "Add room to this booking";
+          button.textContent = nowDuration ? "Book for now" : "Add room to this booking";
           button.addEventListener("click", () => {
-            if (current === generation) choose({ id: room.id, buildingId: building.id });
+            if (current === generation)
+              choose({
+                id: room.id,
+                buildingId: building.id,
+                ...(nowDuration ? { bookNow: true } : {}),
+              });
           });
           footer.appendChild(button);
         }

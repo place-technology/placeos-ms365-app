@@ -96,6 +96,7 @@ export async function startApp(
   hostLabel: string,
   options: {
     showNextMeeting?: () => boolean;
+    favouriteRoomsForNow?: boolean;
     // The meeting being composed in the host, which Book a room fills in instead of booking through PlaceOS.
     meetingDraft?: () => MeetingDraft | null;
     onMeetingChanged?: (listener: () => void) => void;
@@ -114,10 +115,15 @@ export async function startApp(
   updateGreeting();
   todaySignInButton.addEventListener("click", signInAndExchange);
   todayRefreshButton.addEventListener("click", loadToday);
-  favourites = favouriteRoomsView(placeosApi, options.meetingDraft ?? (() => null), (room) => {
-    showView("book");
-    openRoomBooking(room);
-  });
+  favourites = favouriteRoomsView(
+    placeosApi,
+    options.meetingDraft ?? (() => null),
+    (room) => {
+      showView("book");
+      openRoomBooking(room);
+    },
+    options.favouriteRoomsForNow
+  );
   options.onMeetingChanged?.(() => {
     el("bookRoomActionLabel").textContent = options.meetingDraft?.()
       ? "Add a room to this meeting"

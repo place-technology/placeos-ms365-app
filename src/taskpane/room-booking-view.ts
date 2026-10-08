@@ -112,6 +112,7 @@ let buildingId = "";
 let getDraft: () => MeetingDraft | null = () => null;
 let draft: MeetingDraft | null = null;
 let favouriteShortcut = false;
+let favouriteForNow = false;
 
 // Form state.
 let attendees: Person[] = [];
@@ -272,6 +273,8 @@ export function initRoomBooking(
   setupMenuFilters("bookAssets", renderAssetList);
   el("bookDoneButton").addEventListener("click", () => onClose(true));
   el("bookAnotherButton").addEventListener("click", () => {
+    favouriteForNow = false;
+    favouriteShortcut = false;
     resetForm();
     showStep("form");
   });
@@ -280,12 +283,13 @@ export function initRoomBooking(
 /** Opens the view at the details form. Loads the org and settings the first time. */
 export async function openRoomBooking(favourite?: FavouriteRoom) {
   favouriteShortcut = !!favourite;
+  favouriteForNow = favourite?.bookNow === true && !getDraft();
   showStep("form");
   show(steps.form, false);
   setText(status, "Loading...", "detail loading");
   draft = getDraft();
   showDraftMode();
-  if (favourite && !draft) {
+  if (favourite && !draft && !favouriteForNow) {
     setText(status, "Open an editable Outlook meeting to add a favourite room.", "detail error");
     return;
   }
@@ -320,7 +324,7 @@ export async function openRoomBooking(favourite?: FavouriteRoom) {
   const building =
     favourite?.buildingId || buildingId || (await org.defaultBuilding())?.id || org.buildings[0].id;
   await changeBuilding(building);
-  if (favourite && details) {
+  if (favourite && (details || favouriteForNow)) {
     try {
       request = await favouriteRoomRequest(api, org, settings, favourite, details);
       if (draft?.isCurrent?.() === false) {
@@ -1843,6 +1847,9 @@ async function submit() {
   setText(errorText, draft ? "Adding the room..." : "Booking...", "detail");
   try {
     const { start, duration } = request;
+    if (favouriteForNow && start + duration * minute <= Date.now()) {
+      throw new Error("This booking time has passed. Go back and refresh your favourites.");
+    }
     // Someone may have taken the room since the list loaded.
     const stillFree = await getAvailableSpaceIds(api, [room], start, duration, settings);
     if (!stillFree.has(room.id)) {
