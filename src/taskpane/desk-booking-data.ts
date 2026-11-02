@@ -66,6 +66,10 @@ type ResourceAsset = {
   features?: string[];
   images?: string[];
   notes?: string;
+  // Third party ids, and the original desk id as place_id when it differs from map_id.
+  client_ids?: Record<string, unknown>;
+  // Other desk fields, such as tags.
+  other_data?: Record<string, unknown>;
 };
 
 /** A desk or parking space. */
@@ -76,12 +80,15 @@ export type Desk = {
   name: string;
   // Id of its element on its level's floor plan.
   map_id: string;
+  // The desk's id before desks were assets (only when it isn't the map_id): old booking rules use it.
+  place_id?: string;
   level: Zone;
   // The asset's own zones, which booking rules match and the booking also gets.
   zones: string[];
   bookable: boolean;
   groups: string[];
   features: string[];
+  tags: string[];
   assigned_to: string;
   assigned_name: string;
 };
@@ -218,24 +225,33 @@ export const getResourceTypeId = (api: PlaceosApi, kind: ResourceKind) =>
  * uses the raw parking asset.
  */
 function deskFromAsset(asset: ResourceAsset, level: Zone, kind: ResourceKind): Desk {
+  const place_id = asset.client_ids?.place_id;
   return {
     kind,
     id: asset.id,
     name: asset.identifier || asset.name || asset.id,
     map_id: asset.map_id || asset.id,
+    ...(typeof place_id === "string" && place_id ? { place_id } : {}),
     level,
     zones: asset.zones || [],
     bookable: kind === "parking" ? asset.bookable !== false : asset.bookable === true,
     groups: asset.place_groups || [],
     features: asset.features || [],
+    tags: stringList(asset.other_data?.tags),
     assigned_to: asset.assigned_to || "",
     assigned_name: asset.assigned_name || "",
   };
 }
 
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
 /**
- * Desks or parking spaces on these levels: one assets query per level, as Workplace's
- * queryDeskAssetsForZones and queryParkingSpacesForZones.
+ * Desks or parking spaces on these levels. Assets list their building in `zones`, so there's one
+ * assets query per building (as Workplace's queryDeskAssetsInZone), keeping the assets on these levels.
  */
 export async function getDesks(
   api: PlaceosApi,
@@ -246,17 +262,22 @@ export async function getDesks(
   if (!typeId || !levels.length) {
     return [];
   }
-  const perLevel = await Promise.all(
-    levels.map(async (level) => {
+  const byId = new Map(levels.map((level) => [level.id, level]));
+  const buildings = Array.from(new Set(levels.map((level) => level.parent_id || level.id)));
+  const perBuilding = await Promise.all(
+    buildings.map(async (building) => {
       const assets = await api<ResourceAsset[]>(
-        `/api/engine/v2/assets?zone_id=${encodeURIComponent(level.id)}` +
+        `/api/engine/v2/assets?zones=${encodeURIComponent(building)}` +
           `&type_id=${encodeURIComponent(typeId)}&limit=500`,
         allPages
       );
-      return resultList(assets).map((asset) => deskFromAsset(asset, level, kind));
+      return resultList(assets).flatMap((asset) => {
+        const level = byId.get(asset.zone_id || "");
+        return level ? [deskFromAsset(asset, level, kind)] : [];
+      });
     })
   );
-  return perLevel.flat();
+  return perBuilding.flat();
 }
 
 /** The user's entry in the building's parking users (Concierge), as Workplace's ParkingService.user_details. */
@@ -343,7 +364,14 @@ export function bookableDesks(
       return false;
     }
     const rulesets = rules.get(desk.level.parent_id || "") || [];
-    const resource = { id: desk.id, name: desk.name, zones: [desk.level.id, ...desk.zones] };
+    const resource = {
+      id: desk.id,
+      map_id: desk.map_id,
+      place_id: desk.place_id,
+      name: desk.name,
+      tags: desk.tags,
+      zones: [desk.level.id, ...desk.zones],
+    };
     return !hiddenByRules(rulesets, resource, request.start, request.duration, groups);
   });
 }

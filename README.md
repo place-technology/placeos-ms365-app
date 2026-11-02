@@ -103,6 +103,7 @@ For customers, use the **Package for customer** GitHub Actions workflow (`.githu
 ```bash
 npm run lint           # ESLint (office-addins rules) + Prettier; lint:fix / prettier to fix
 npx tsc --noEmit       # type-check (the build uses Babel, so type errors don't fail it)
+npm test               # unit tests (Vitest)
 npm run validate       # validate manifest.xml
 ```
 

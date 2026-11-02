@@ -1,5 +1,6 @@
 /* This file reads PlaceOS data for Phase 5. All calls are read-only GETs. */
 
+import { getResourceTypeId } from "./desk-booking-data";
 import type { PlaceosRequestInit } from "./placeos-helper";
 
 /**
@@ -39,8 +40,6 @@ export type DeskSummary = {
   bookedToday: number;
 };
 
-type ZoneMetadata = { zone: Zone; metadata: { desks?: { details?: unknown } } };
-
 /** A list response, either a plain array or a paginated { results } object. */
 export const resultList = <T>(result: T[] | { results?: T[] } | null): T[] =>
   Array.isArray(result) ? result : result?.results || [];
@@ -72,18 +71,19 @@ export function getBookableRooms(api: PlaceosApi, buildingId: string): Promise<R
   );
 }
 
-/**
- * Counts desks from each level's "desks" metadata, and desks booked today in the building.
- * Desk metadata is a frontend convention (usually an array of desks), so non-arrays count as zero.
- */
+/** Counts the building's desk assets and the levels they're on, and desks booked today in the building. */
 export async function getDeskSummary(api: PlaceosApi, buildingId: string): Promise<DeskSummary> {
   const building = encodeURIComponent(buildingId);
-  const levels = await api<ZoneMetadata[]>(
-    `/api/engine/v2/metadata/${building}/children?name=desks&include_parent=false`
-  );
-  const deskLists = levels
-    .map((level) => level.metadata?.desks?.details)
-    .filter((details): details is unknown[] => Array.isArray(details));
+  // Assets list their building in `zones`.
+  const typeId = await getResourceTypeId(api, "desk");
+  const desks = typeId
+    ? resultList(
+        await api<{ zone_id?: string }[]>(
+          `/api/engine/v2/assets?zones=${building}&type_id=${encodeURIComponent(typeId)}&limit=500`,
+          allPages
+        )
+      )
+    : [];
 
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -96,8 +96,8 @@ export async function getDeskSummary(api: PlaceosApi, buildingId: string): Promi
   );
 
   return {
-    levels: deskLists.length,
-    desks: deskLists.reduce((total, desks) => total + desks.length, 0),
+    levels: new Set(desks.map((desk) => desk.zone_id).filter(Boolean)).size,
+    desks: desks.length,
     // Workplace removes duplicates too.
     bookedToday: new Set(resultList(booked)).size,
   };
