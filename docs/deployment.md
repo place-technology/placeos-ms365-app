@@ -116,7 +116,7 @@ Entra or PlaceOS config changes, such as a new redirect URI, scope or `outlook_a
 
 ## Release checklist
 
-1. `npm run lint` and `npx tsc --noEmit`
+1. `npm run lint`, `npx tsc --noEmit` and `npm test`
 2. `npm run validate` if `manifest.xml` changed
 3. If a package changed, bump its version (table above)
 4. Merge to `main`, check the **Build** workflow passed, and pull the latest `build/prod` commit in Backoffice on each domain

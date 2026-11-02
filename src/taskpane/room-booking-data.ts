@@ -140,7 +140,10 @@ export function stringToMinutes(text: string): number {
 }
 
 /** What booking rules are matched against: a room, or a desk with its level and building as zones. */
-export type RuleResource = Pick<Space, "id" | "name" | "zones" | "tags">;
+export type RuleResource = Pick<Space, "id" | "name" | "zones" | "tags" | "map_id"> & {
+  // A desk's id before desks were assets, kept when it isn't the map id.
+  place_id?: string;
+};
 
 export function getBookingRules(
   api: PlaceosApi,
@@ -176,7 +179,12 @@ function rulesMatch(
   if (c.is_between && hour >= c.is_between[0] && hour < c.is_between[1]) matches++;
   if (c.is_period && start >= c.is_period[0] && start < c.is_period[1]) matches++;
   if (c.max_length && c.max_length >= duration) matches++;
-  if (c.resource_ids && c.resource_ids.includes(space.id)) matches++;
+  // Rules saved before desks were assets list the old desk id: the map id, or place_id when they differ.
+  if (
+    c.resource_ids &&
+    [space.id, space.map_id, space.place_id].some((id) => id && c.resource_ids?.includes(id))
+  )
+    matches++;
   if (c.tags && c.tags.every((tag) => (space.tags || []).includes(tag))) matches++;
   if (c.locations && c.locations.includes(space.name)) matches++;
   return matches >= Object.keys(c).length;

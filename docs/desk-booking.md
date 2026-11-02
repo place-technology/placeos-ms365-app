@@ -2,11 +2,11 @@
 
 The Book a desk flow (Today → Desks card → **Book a desk**) ports PlaceOS Workplace's desk booking with `app.desks.use_assets` (user-interfaces `libs/assets` `desk-assets.fn.ts`, `libs/bookings` `BookingFormService`, develop as of 2026-10-06). **Book parking** (Today → Parking card) uses the same view for parking spaces (see [Parking](#parking) below). How both work is summarised in `CLAUDE.md`. This file lists what is still open.
 
-Status (2026-10-06): implemented. It builds, type-checks and passes lint, but hasn't been tested against a PlaceOS domain. No domain has desk assets yet (desks are still in zone metadata everywhere), so until one is migrated the flow shows "No desks are set up in PlaceOS for this building".
+Status (2026-10-06): implemented. It builds, type-checks, passes lint and has unit tests (`src/tests/desk-booking-data.spec.ts`), but hasn't been tested against a PlaceOS domain. A domain's desks move from zone metadata to assets with PlaceOS init's `migrate:desk_assets` task; until then the flow shows "No desks are set up in PlaceOS for this building".
 
 ## Assets only
 
-Desks are read only as Assets: asset type `_DESKS_` in the hidden asset category `_DESKS_`, with `zone_id` = the desk's level. The category and type names are compared without case and without spaces at the ends, as Workplace does. A desk asset must have `bookable: true`. The legacy `desks` zone metadata isn't read, on purpose, because Assets are the way forward. Workplace creates the category and type when they're missing. The add-in only reads them and never creates them. The Today view still shows names for bookings of either kind.
+Desks are read only as Assets: asset type `_DESKS_` in the hidden asset category `_DESKS_`, with `zone_id` = the desk's level and `zones` = its org, region, building and level, so they're queried once per building (`zones=<building>`). Third party ids are in `client_ids`, plus `place_id` (the desk's id from before desks were assets) when it differs from `map_id`; `tags` and `homebase` are in `other_data`. Booking rules' `resource_ids` match the asset id, `map_id` or `place_id`. The category and type names are compared without case and without spaces at the ends, as Workplace does. A desk asset must have `bookable: true`. The legacy `desks` zone metadata isn't read, on purpose, because Assets are the way forward. Workplace creates the category and type when they're missing. The add-in only reads them and never creates them. The Today view still shows names for bookings of either kind.
 
 ## Outstanding questions
 
